@@ -1,0 +1,843 @@
+openapi: 3.0.3
+info:
+  title: API Системы управления общежитиями ГУБКИН
+  description: |
+    Backend API для системы управления общежитиями Российского государственного университета нефти и газа имени И.М. Губкина.
+    
+    ## Основные возможности:
+    - Регистрация и аутентификация пользователей
+    - Управление общежитиями, этажами, блоками, комнатами и кроватями
+    - Подача и обработка заявок на заселение
+    - Управление профилями пользователей
+    - Загрузка и управление файлами
+    - Логирование действий пользователей
+    
+    ## Аутентификация:
+    Все защищенные маршруты требуют JWT токен в заголовке:
+    ```
+    Authorization: Bearer <your_jwt_token>
+    ```
+  version: 1.0.0
+  contact:
+    name: ГУБКИН Университет
+    email: support@gubkin.ru
+    url: https://www.gubkin.ru
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:3000/api
+    description: Локальная разработка
+  - url: https://api.gubkin.ru/api
+    description: Продакшн сервер
+
+security:
+  - BearerAuth: []
+
+paths:
+  /health:
+    get:
+      summary: Проверка состояния сервера
+      description: Возвращает статус сервера и информацию об окружении
+      tags:
+        - Система
+      responses:
+        '200':
+          description: Сервер работает
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "OK"
+                  timestamp:
+                    type: string
+                    format: date-time
+                    example: "2024-01-15T10:30:00.000Z"
+                  environment:
+                    type: string
+                    example: "development"
+
+  /auth/register-request:
+    post:
+      summary: Запрос кода подтверждения для регистрации
+      description: Отправляет код подтверждения на email или телефон для регистрации
+      tags:
+        - Аутентификация
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - contact
+              properties:
+                contact:
+                  type: string
+                  description: Email или телефон
+                  example: "student@gubkin.ru"
+      responses:
+        '200':
+          description: Код отправлен
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Код подтверждения отправлен"
+        '400':
+          description: Неверный формат контакта
+        '429':
+          description: Слишком много запросов
+
+  /auth/register:
+    post:
+      summary: Регистрация с кодом подтверждения
+      description: Регистрация нового пользователя с кодом подтверждения
+      tags:
+        - Аутентификация
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - contact
+                - code
+                - username
+                - password
+              properties:
+                contact:
+                  type: string
+                  example: "student@gubkin.ru"
+                code:
+                  type: string
+                  example: "123456"
+                username:
+                  type: string
+                  example: "student123"
+                password:
+                  type: string
+                  example: "password123"
+      responses:
+        '201':
+          description: Пользователь зарегистрирован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          description: Неверный код или данные
+
+  /auth/login:
+    post:
+      summary: Вход в систему
+      description: Аутентификация пользователя
+      tags:
+        - Аутентификация
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - contact
+                - password
+              properties:
+                contact:
+                  type: string
+                  example: "student@gubkin.ru"
+                password:
+                  type: string
+                  example: "password123"
+      responses:
+        '200':
+          description: Успешный вход
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          description: Неверные учетные данные
+
+  /auth/refresh:
+    post:
+      summary: Обновление токена
+      description: Обновление JWT токена с помощью refresh токена
+      tags:
+        - Аутентификация
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - refreshToken
+              properties:
+                refreshToken:
+                  type: string
+                  example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+      responses:
+        '200':
+          description: Токен обновлен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+
+  /auth/logout:
+    post:
+      summary: Выход из системы
+      description: Выход пользователя из системы
+      tags:
+        - Аутентификация
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Успешный выход
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Успешный выход из системы"
+
+  /dormitories:
+    get:
+      summary: Получить все общежития
+      description: Возвращает список всех общежитий с статистикой
+      tags:
+        - Общежития
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Список общежитий
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  dormitories:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Dormitory'
+
+  /dormitories/available:
+    get:
+      summary: Получить доступные общежития
+      description: Возвращает список общежитий, доступных для студента
+      tags:
+        - Общежития
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Доступные общежития
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  dormitories:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Dormitory'
+
+  /dormitories/{id}:
+    get:
+      summary: Получить общежитие по ID
+      description: Возвращает информацию об общежитии
+      tags:
+        - Общежития
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: ID общежития
+      responses:
+        '200':
+          description: Информация об общежитии
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Dormitory'
+
+  /floors:
+    get:
+      summary: Получить все этажи
+      description: Возвращает список всех этажей
+      tags:
+        - Структура
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Список этажей
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  floors:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Floor'
+
+  /floors/dormitory/{dormitoryId}:
+    get:
+      summary: Получить этажи общежития
+      description: Возвращает этажи конкретного общежития
+      tags:
+        - Структура
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: dormitoryId
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: ID общежития
+      responses:
+        '200':
+          description: Этажи общежития
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  floors:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Floor'
+
+  /rooms:
+    get:
+      summary: Получить все комнаты
+      description: Возвращает список всех комнат
+      tags:
+        - Структура
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Список комнат
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rooms:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Room'
+
+  /beds:
+    get:
+      summary: Получить все кровати
+      description: Возвращает список всех кроватей
+      tags:
+        - Структура
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Список кроватей
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  beds:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Bed'
+
+  /beds/available:
+    get:
+      summary: Получить доступные кровати
+      description: Возвращает список свободных кроватей
+      tags:
+        - Структура
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Доступные кровати
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  beds:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Bed'
+
+  /applications:
+    get:
+      summary: Получить заявки
+      description: Возвращает заявки пользователя (студент) или все заявки (админ)
+      tags:
+        - Заявки
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Список заявок
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  applications:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Application'
+
+    post:
+      summary: Создать заявку
+      description: Создание новой заявки на заселение
+      tags:
+        - Заявки
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - dormitoryId
+                - floorId
+                - roomId
+                - bedId
+                - reason
+              properties:
+                dormitoryId:
+                  type: integer
+                  example: 1
+                floorId:
+                  type: integer
+                  example: 2
+                roomId:
+                  type: integer
+                  example: 5
+                bedId:
+                  type: integer
+                  example: 10
+                reason:
+                  type: string
+                  example: "Заселение в общежитие"
+      responses:
+        '201':
+          description: Заявка создана
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Application'
+
+  /applications/{id}/approve:
+    put:
+      summary: Одобрить заявку
+      description: Одобрение заявки администратором
+      tags:
+        - Заявки
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: ID заявки
+      responses:
+        '200':
+          description: Заявка одобрена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Application'
+
+  /applications/{id}/reject:
+    put:
+      summary: Отклонить заявку
+      description: Отклонение заявки администратором
+      tags:
+        - Заявки
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: ID заявки
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+                  example: "Недостаточно документов"
+      responses:
+        '200':
+          description: Заявка отклонена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Application'
+
+  /profile:
+    get:
+      summary: Получить профиль
+      description: Возвращает профиль текущего пользователя
+      tags:
+        - Профиль
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Профиль пользователя
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+
+    put:
+      summary: Обновить профиль
+      description: Обновление профиля пользователя
+      tags:
+        - Профиль
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                username:
+                  type: string
+                  example: "new_username"
+                firstName:
+                  type: string
+                  example: "Иван"
+                lastName:
+                  type: string
+                  example: "Иванов"
+                middleName:
+                  type: string
+                  example: "Иванович"
+                contact:
+                  type: string
+                  example: "new_email@gubkin.ru"
+      responses:
+        '200':
+          description: Профиль обновлен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+
+  /files/upload:
+    post:
+      summary: Загрузить файл
+      description: Загрузка файла в систему
+      tags:
+        - Файлы
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: Файл для загрузки
+      responses:
+        '201':
+          description: Файл загружен
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  filename:
+                    type: string
+                    example: "document.pdf"
+                  url:
+                    type: string
+                    example: "/uploads/document.pdf"
+                  size:
+                    type: integer
+                    example: 1024000
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    AuthResponse:
+      type: object
+      properties:
+        accessToken:
+          type: string
+          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+        refreshToken:
+          type: string
+          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+        user:
+          $ref: '#/components/schemas/User'
+
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        username:
+          type: string
+          example: "student123"
+        firstName:
+          type: string
+          example: "Иван"
+        lastName:
+          type: string
+          example: "Иванов"
+        middleName:
+          type: string
+          example: "Иванович"
+        contact:
+          type: string
+          example: "student@gubkin.ru"
+        role:
+          type: string
+          enum: [student, admin]
+          example: "student"
+        course:
+          type: integer
+          example: 2
+        gender:
+          type: string
+          enum: [male, female]
+          example: "male"
+        createdAt:
+          type: string
+          format: date-time
+          example: "2024-01-15T10:30:00.000Z"
+        updatedAt:
+          type: string
+          format: date-time
+          example: "2024-01-15T10:30:00.000Z"
+
+    Dormitory:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: "ДПС-1"
+        type:
+          type: string
+          enum: [type_1, type_2]
+          example: "type_1"
+        address:
+          type: string
+          example: "ул. Ленинская, 65"
+        maxFloors:
+          type: integer
+          example: 9
+        description:
+          type: string
+          example: "Общежитие для студентов 1 курса"
+        stats:
+          type: object
+          properties:
+            totalFloors:
+              type: integer
+              example: 9
+            totalRooms:
+              type: integer
+              example: 180
+            totalBeds:
+              type: integer
+              example: 720
+            occupiedBeds:
+              type: integer
+              example: 650
+            availableBeds:
+              type: integer
+              example: 70
+        createdAt:
+          type: string
+          format: date-time
+          example: "2024-01-15T10:30:00.000Z"
+        updatedAt:
+          type: string
+          format: date-time
+          example: "2024-01-15T10:30:00.000Z"
+
+    Floor:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        number:
+          type: integer
+          example: 1
+        dormitoryId:
+          type: integer
+          example: 1
+        isActive:
+          type: boolean
+          example: true
+        createdAt:
+          type: string
+          format: date-time
+          example: "2024-01-15T10:30:00.000Z"
+        updatedAt:
+          type: string
+          format: date-time
+          example: "2024-01-15T10:30:00.000Z"
+
+    Room:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        number:
+          type: string
+          example: "101"
+        floorId:
+          type: integer
+          example: 1
+        blockId:
+          type: integer
+          example: 1
+        capacity:
+          type: integer
+          example: 4
+        isActive:
+          type: boolean
+          example: true
+        createdAt:
+          type: string
+          format: date-time
+          example: "2024-01-15T10:30:00.000Z"
+        updatedAt:
+          type: string
+          format: date-time
+          example: "2024-01-15T10:30:00.000Z"
+
+    Bed:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        number:
+          type: string
+          example: "1"
+        roomId:
+          type: integer
+          example: 1
+        isOccupied:
+          type: boolean
+          example: false
+        isActive:
+          type: boolean
+          example: true
+        createdAt:
+          type: string
+          format: date-time
+          example: "2024-01-15T10:30:00.000Z"
+        updatedAt:
+          type: string
+          format: date-time
+          example: "2024-01-15T10:30:00.000Z"
+
+    Application:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        userId:
+          type: integer
+          example: 1
+        dormitoryId:
+          type: integer
+          example: 1
+        floorId:
+          type: integer
+          example: 2
+        roomId:
+          type: integer
+          example: 5
+        bedId:
+          type: integer
+          example: 10
+        reason:
+          type: string
+          example: "Заселение в общежитие"
+        status:
+          type: string
+          enum: [pending, approved, rejected]
+          example: "pending"
+        adminComment:
+          type: string
+          example: "Одобрено"
+        createdAt:
+          type: string
+          format: date-time
+          example: "2024-01-15T10:30:00.000Z"
+        updatedAt:
+          type: string
+          format: date-time
+          example: "2024-01-15T10:30:00.000Z"
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          example: "Ошибка валидации"
+        details:
+          type: string
+          example: "Дополнительная информация об ошибке" 
