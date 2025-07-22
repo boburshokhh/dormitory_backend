@@ -8,6 +8,7 @@ require('dotenv').config({ path: './services/config.env' })
 const db = require('./config/database')
 const { initializeBucket } = require('./config/minio')
 const { apiLoggingMiddleware, errorLoggingMiddleware } = require('./middleware/logging')
+const welcomeRoutes = require('./routes/welcome')
 const authRoutes = require('./routes/auth')
 const profileRoutes = require('./routes/profile')
 const dormitoryRoutes = require('./routes/dormitories')
@@ -85,6 +86,7 @@ app.use(async (req, res, next) => {
 app.use(apiLoggingMiddleware)
 
 // Routes
+app.use('/', welcomeRoutes) // Страница приветствия
 app.use('/api/auth', authRoutes)
 app.use('/api/profile', profileRoutes)
 app.use('/api/dormitories', dormitoryRoutes)
