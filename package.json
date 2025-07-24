@@ -23,7 +23,11 @@
     "test:api": "node test-api-duplicates.js",
     "test:duplicates": "node test-duplicate-fix.js",
     "test:preview": "node test-photo-preview.js",
-    "test:all": "npm run test:smtp && npm run test:minio && npm run test:upload && npm run test:api && npm run test:duplicates && npm run test:preview"
+    "test:all": "npm run test:smtp && npm run test:minio && npm run test:upload && npm run test:api && npm run test:duplicates && npm run test:preview",
+    "deploy:fly": "fly deploy",
+    "fly:logs": "fly logs",
+    "fly:status": "fly status",
+    "fly:ssh": "fly ssh console"
   },
   "keywords": [
     "nodejs",
@@ -36,7 +40,7 @@
   "author": "GUBKIN University",
   "license": "MIT",
   "dependencies": {
-    "bcrypt": "^5.1.1",
+    "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
     "express": "^4.18.2",

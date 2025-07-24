@@ -32,26 +32,74 @@ app.use(helmet()) // Безопасность заголовков
 // CORS конфигурация для поддержки нескольких доменов
 const allowedOrigins = [
   'http://localhost:5173', // Development
-  'https://dormitory-gubkin.netlify.app', // Production
+  'http://localhost:3000', // Local development
+  'https://dormitory-gubkin.netlify.app', // Production Netlify
+  'https://dormitory.gubkin.uz', // Production domain
+  'https://9e4890cdc062.ngrok-free.app', // ngrok tunnel
   process.env.FRONTEND_URL, // Дополнительный домен из конфига
 ].filter(Boolean)
 
 app.use(
   cors({
     origin: function (origin, callback) {
-      // Разрешаем запросы без origin (например, мобильные приложения)
+      // Разрешаем запросы без origin (например, мобильные приложения, Postman)
       if (!origin) return callback(null, true)
 
+      // Проверяем точное совпадение с разрешенными доменами
       if (allowedOrigins.indexOf(origin) !== -1) {
         callback(null, true)
-      } else {
-        callback(new Error('Not allowed by CORS'))
+        return
       }
+
+      // Разрешаем все поддомены gubkin.uz
+      if (origin && origin.match(/^https?:\/\/.*\.gubkin\.uz$/)) {
+        callback(null, true)
+        return
+      }
+
+      // Разрешаем localhost для разработки
+      if (origin && origin.match(/^https?:\/\/localhost(:\d+)?$/)) {
+        callback(null, true)
+        return
+      }
+
+      console.log(`❌ CORS blocked origin: ${origin}`)
+      callback(new Error('Not allowed by CORS'))
     },
     credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: [
+      'Origin',
+      'X-Requested-With',
+      'Content-Type',
+      'Accept',
+      'Authorization',
+      'Cache-Control',
+      'Pragma'
+    ],
+    exposedHeaders: ['Authorization'],
+    optionsSuccessStatus: 200 // Для старых браузеров
   }),
 )
 app.use(morgan('combined')) // Логирование
+
+// Дополнительные CORS заголовки
+app.use((req, res, next) => {
+  const origin = req.headers.origin
+  if (origin) {
+    res.header('Access-Control-Allow-Origin', origin)
+  }
+  res.header('Access-Control-Allow-Credentials', 'true')
+  res.header('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,PATCH,OPTIONS')
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, Cache-Control, Pragma')
+  
+  if (req.method === 'OPTIONS') {
+    res.sendStatus(200)
+  } else {
+    next()
+  }
+})
+
 app.use(express.json({ limit: '10mb' }))
 app.use(express.urlencoded({ extended: true }))
 
@@ -133,13 +181,23 @@ app.use((error, req, res, next) => {
 // Graceful shutdown
 process.on('SIGTERM', async () => {
   console.log('Получен сигнал SIGTERM, завершаем сервер...')
-  await db.end()
+  try {
+    await db.pool.end()
+    console.log('✅ Пул подключений закрыт')
+  } catch (error) {
+    console.error('Ошибка закрытия пула:', error)
+  }
   process.exit(0)
 })
 
 process.on('SIGINT', async () => {
   console.log('Получен сигнал SIGINT, завершаем сервер...')
-  await db.end()
+  try {
+    await db.pool.end()
+    console.log('✅ Пул подключений закрыт')
+  } catch (error) {
+    console.error('Ошибка закрытия пула:', error)
+  }
   process.exit(0)
 })
 
