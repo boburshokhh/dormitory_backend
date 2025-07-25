@@ -1,7 +1,7 @@
 const multer = require('multer')
 const path = require('path')
+const { query } = require('../config/database')
 const filesService = require('../services/filesService')
-const loggingService = require('../services/loggingService')
 const { handleApplicationError } = require('../utils/errorHandler')
 const {
   validateUploadFiles,
@@ -52,22 +52,6 @@ class FilesController {
       // Загружаем файлы через сервис
       const result = await filesService.uploadFiles(files, validatedData, req.user.id)
 
-      // Логируем успешную загрузку
-      await loggingService.logUserActivity({
-        userId: req.user.id,
-        actionType: 'file_upload',
-        actionDescription: `Загружено ${result.uploadResults.length} файлов, ошибок: ${result.errors.length}`,
-        req,
-        success: result.errors.length === 0,
-        requestData: {
-          fileCount: files.length,
-          fileTypes: files.map((f) => f.mimetype),
-          totalSize: files.reduce((sum, f) => sum + f.size, 0),
-          successCount: result.uploadResults.length,
-          errorCount: result.errors.length,
-        },
-      })
-
       res.json({
         success: result.errors.length === 0,
         message: 'Файлы обработаны',
@@ -107,22 +91,6 @@ class FilesController {
         pagination,
       )
 
-      // Логируем успешное получение
-      await loggingService.logUserActivity({
-        userId: req.user.id,
-        actionType: 'files_list',
-        actionDescription: `Получен список файлов: ${result.files.length} из ${result.pagination.total}`,
-        req,
-        success: true,
-        requestData: {
-          filters,
-          pagination: {
-            page: validatedParams.pageNum,
-            limit: validatedParams.limitNum,
-          },
-        },
-      })
-
       res.json({
         success: true,
         data: {
@@ -144,23 +112,29 @@ class FilesController {
       const fileId = validateUUID(req.params.id, 'ID файла')
       const { download } = validateFileDownload(req.query)
 
-      // Получаем файл через сервис
-      const file = await filesService.getFileById(fileId, req.user.id, req.user.role, download)
+      if (download) {
+        // Скачивание файла как stream
+        const fileData = await filesService.downloadFileStream(fileId, req.user.id, req.user.role)
 
-      // Логируем просмотр/скачивание файла
-      await loggingService.logUserActivity({
-        userId: req.user.id,
-        actionType: download ? 'file_download' : 'file_view',
-        actionDescription: `${download ? 'Скачивание' : 'Просмотр'} файла: ${file.originalName}`,
-        req,
-        success: true,
-        requestData: { fileId, download },
-      })
+        // Устанавливаем заголовки для скачивания
+        res.setHeader('Content-Type', fileData.mimeType)
+        res.setHeader(
+          'Content-Disposition',
+          `attachment; filename="${encodeURIComponent(fileData.fileName)}"`,
+        )
+        res.setHeader('Content-Length', fileData.fileSize)
 
-      res.json({
-        success: true,
-        data: file,
-      })
+        // Отправляем файл как stream
+        fileData.stream.pipe(res)
+      } else {
+        // Получаем только метаданные файла
+        const file = await filesService.getFileById(fileId, req.user.id, req.user.role, false)
+
+        res.json({
+          success: true,
+          data: file,
+        })
+      }
     } catch (error) {
       await handleApplicationError(error, req, res, context)
     }
@@ -175,19 +149,6 @@ class FilesController {
 
       // Удаляем файл через сервис
       const result = await filesService.deleteFile(fileId, req.user.id, req.user.role)
-
-      // Логируем удаление
-      await loggingService.logUserActivity({
-        userId: req.user.id,
-        actionType: 'file_delete',
-        actionDescription: `Удален файл: ${result.deletedFile.originalName}`,
-        req,
-        success: true,
-        requestData: {
-          fileId,
-          fileName: result.deletedFile.originalName,
-        },
-      })
 
       res.json({
         success: true,
@@ -210,16 +171,6 @@ class FilesController {
       // Получаем файлы пользователя через сервис
       const result = await filesService.getUserFilesForAdmin(userId, req.user.role, filters)
 
-      // Логируем просмотр файлов пользователя
-      await loggingService.logUserActivity({
-        userId: req.user.id,
-        actionType: 'admin_user_files',
-        actionDescription: `Просмотр файлов пользователя: ${userId} (найдено ${result.files.length})`,
-        req,
-        success: true,
-        requestData: { targetUserId: userId, filters },
-      })
-
       res.json({
         success: true,
         data: result,
@@ -239,16 +190,6 @@ class FilesController {
 
       // Верифицируем файл через сервис
       const result = await filesService.verifyFile(fileId, req.user.role, req.user.id, verified)
-
-      // Логируем верификацию
-      await loggingService.logUserActivity({
-        userId: req.user.id,
-        actionType: 'file_verify',
-        actionDescription: `${verified ? 'Верифицирован' : 'Снята верификация с'} файл: ${result.fileName}`,
-        req,
-        success: true,
-        requestData: { fileId, verified },
-      })
 
       res.json({
         success: true,
@@ -275,21 +216,6 @@ class FilesController {
         validatedData.relatedEntityId,
       )
 
-      // Логируем активацию
-      await loggingService.logUserActivity({
-        userId: req.user.id,
-        actionType: 'files_activate',
-        actionDescription: `Активировано ${result.count} файлов`,
-        req,
-        success: true,
-        requestData: {
-          fileIds: validatedData.fileIds,
-          relatedEntityType: validatedData.relatedEntityType,
-          relatedEntityId: validatedData.relatedEntityId,
-          activatedCount: result.count,
-        },
-      })
-
       res.json({
         success: true,
         message: 'Файлы успешно активированы',
@@ -312,21 +238,6 @@ class FilesController {
 
       // Очищаем старые файлы через сервис
       const result = await filesService.cleanupOldFiles(req.user.role, req.user.id, daysOld)
-
-      // Логируем очистку
-      await loggingService.logUserActivity({
-        userId: req.user.id,
-        actionType: 'files_cleanup',
-        actionDescription: `Очистка старых файлов: удалено ${result.deleted.length} из ${result.total}`,
-        req,
-        success: true,
-        requestData: {
-          daysOld,
-          deletedCount: result.deleted.length,
-          totalFound: result.total,
-          errorCount: result.errors.length,
-        },
-      })
 
       res.json({
         success: true,
@@ -353,20 +264,6 @@ class FilesController {
     try {
       // Очищаем дубликаты через сервис
       const result = await filesService.cleanupDuplicateFiles(req.user.role, req.user.id)
-
-      // Логируем очистку дубликатов
-      await loggingService.logUserActivity({
-        userId: req.user.id,
-        actionType: 'files_cleanup_duplicates',
-        actionDescription: `Очистка дубликатов: удалено ${result.deleted.length} из ${result.total}`,
-        req,
-        success: true,
-        requestData: {
-          deletedCount: result.deleted.length,
-          totalFound: result.total,
-          errorCount: result.errors.length,
-        },
-      })
 
       res.json({
         success: true,

@@ -1,6 +1,5 @@
+const { query, transaction } = require('../config/database')
 const applicationsService = require('../services/applicationsService')
-const { query } = require('../config/database')
-const loggingService = require('../services/loggingService')
 const {
   handleApplicationError,
   createNotFoundError,
@@ -18,7 +17,7 @@ const {
 class ApplicationsController {
   // GET /api/applications - Получить список заявок
   async getApplicationsList(req, res) {
-    const context = { function: 'getApplicationsList', actionType: 'applications_fetch' }
+    const context = { function: 'getApplicationsList', actionType: 'admin_action' }
 
     try {
       // Валидация параметров
@@ -35,22 +34,6 @@ class ApplicationsController {
         filters,
         validatedParams,
       )
-
-      // Логируем успешное выполнение
-      await loggingService.logUserActivity({
-        userId: req.user.id,
-        actionType: 'applications_fetch',
-        actionDescription: `Успешно получен список заявок (${result.applications.length} из ${result.pagination.total})`,
-        req,
-        success: true,
-        requestData: {
-          filters,
-          pagination: {
-            page: validatedParams.pageNum,
-            limit: validatedParams.limitNum,
-          },
-        },
-      })
 
       res.json({
         success: true,
@@ -163,16 +146,6 @@ class ApplicationsController {
         req.user.id,
       )
 
-      // Логируем просмотр заявки
-      await loggingService.logUserActivity({
-        userId: req.user.id,
-        actionType: 'application_view',
-        actionDescription: `Просмотр заявки студента: ${application.student.firstName} ${application.student.lastName}`,
-        req,
-        success: true,
-        requestData: { applicationId },
-      })
-
       res.json({ success: true, data: application })
     } catch (error) {
       await handleApplicationError(error, req, res, context)
@@ -194,19 +167,6 @@ class ApplicationsController {
 
       // Создаем заявку через сервис
       const result = await applicationsService.createApplication(req.user.id, validatedData)
-
-      // Логируем создание заявки
-      await loggingService.logUserActivity({
-        userId: req.user.id,
-        actionType: 'application_submit',
-        actionDescription: `Подана новая заявка на ${validatedData.academicYear} учебный год, ${validatedData.semester} семестр`,
-        req,
-        success: true,
-        requestData: {
-          ...validatedData,
-          applicationId: result.id,
-        },
-      })
 
       res.status(201).json({
         success: true,
@@ -239,19 +199,6 @@ class ApplicationsController {
         validatedData,
       )
 
-      // Логируем обновление заявки
-      await loggingService.logUserActivity({
-        userId: req.user.id,
-        actionType: 'application_update',
-        actionDescription: 'Заявка успешно обновлена',
-        req,
-        success: true,
-        requestData: {
-          applicationId,
-          updateData: validatedData,
-        },
-      })
-
       res.json({
         success: true,
         message: 'Заявка успешно обновлена',
@@ -276,19 +223,6 @@ class ApplicationsController {
         req.user.id,
         validatedData,
       )
-
-      // Логируем рассмотрение заявки
-      await loggingService.logUserActivity({
-        userId: req.user.id,
-        actionType: 'application_review',
-        actionDescription: `Заявка ${validatedData.status === 'approved' ? 'одобрена' : 'отклонена'}. Студент: ${result.studentInfo.firstName} ${result.studentInfo.lastName}`,
-        req,
-        success: true,
-        requestData: {
-          applicationId,
-          reviewData: validatedData,
-        },
-      })
 
       res.json({
         success: true,
@@ -317,16 +251,6 @@ class ApplicationsController {
         req.user.id,
         req.user.role,
       )
-
-      // Логируем отзыв заявки
-      await loggingService.logUserActivity({
-        userId: req.user.id,
-        actionType: 'application_cancel',
-        actionDescription: 'Заявка отозвана',
-        req,
-        success: true,
-        requestData: { applicationId },
-      })
 
       res.json({
         success: true,
@@ -402,21 +326,6 @@ class ApplicationsController {
         req.user.id,
         validatedData,
       )
-
-      // Логируем массовое рассмотрение
-      await loggingService.logUserActivity({
-        userId: req.user.id,
-        actionType: 'bulk_review',
-        actionDescription: `Массовое ${validatedData.action === 'approved' ? 'одобрение' : 'отклонение'}: обработано ${results.successfulIds.length} из ${validatedData.applicationIds.length} заявок`,
-        req,
-        success: true,
-        requestData: {
-          totalRequested: validatedData.applicationIds.length,
-          successful: results.successfulIds.length,
-          failed: results.failedIds.length,
-          action: validatedData.action,
-        },
-      })
 
       res.json({
         success: true,
@@ -530,16 +439,6 @@ class ApplicationsController {
         res.setHeader('Content-Disposition', `attachment; filename=applications_${Date.now()}.csv`)
         res.send('\ufeff' + csv) // BOM for UTF-8
       }
-
-      // Логируем экспорт
-      await loggingService.logUserActivity({
-        userId: req.user.id,
-        actionType: 'applications_export',
-        actionDescription: `Экспорт заявок в формате ${format.toUpperCase()}: ${result.rows.length} записей`,
-        req,
-        success: true,
-        requestData: { format, filters: conditions, count: result.rows.length },
-      })
     } catch (error) {
       await handleApplicationError(error, req, res, context)
     }

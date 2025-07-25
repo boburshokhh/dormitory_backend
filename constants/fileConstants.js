@@ -87,8 +87,8 @@ const getFileTypeByExtension = (filename) => {
 
 // Определение типа файла по полю формы
 const getFileTypeByFieldName = (originalName, fieldName) => {
-  if (fieldName === 'passport_file') return FILE_TYPES.PASSPORT
-  if (fieldName === 'photo_3x4') return FILE_TYPES.PHOTO_3X4
+  if (fieldName === 'passport_file' || fieldName === 'passport') return FILE_TYPES.PASSPORT
+  if (fieldName === 'photo_3x4' || fieldName === 'photo') return FILE_TYPES.PHOTO_3X4
   if (fieldName === 'avatar') return FILE_TYPES.AVATAR
 
   return getFileTypeByExtension(originalName)

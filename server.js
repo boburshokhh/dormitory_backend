@@ -7,21 +7,20 @@ require('dotenv').config({ path: './services/config.env' })
 
 const db = require('./config/database')
 const { initializeBucket } = require('./config/minio')
-const { apiLoggingMiddleware, errorLoggingMiddleware } = require('./middleware/logging')
+const { requestLogger, errorLogger } = require('./middleware/logging')
 const welcomeRoutes = require('./routes/welcome')
 const authRoutes = require('./routes/auth')
 const profileRoutes = require('./routes/profile')
-const dormitoryRoutes = require('./routes/dormitories')
-const floorRoutes = require('./routes/floors')
-const blockRoutes = require('./routes/blocks')
-const roomRoutes = require('./routes/rooms')
-const bedRoutes = require('./routes/beds')
-const applicationRoutes = require('./routes/applications')
-const userRoutes = require('./routes/users')
+const dormitoriesRoutes = require('./routes/dormitories')
+const floorsRoutes = require('./routes/floors')
+const blocksRoutes = require('./routes/blocks')
+const roomsRoutes = require('./routes/rooms')
+const bedsRoutes = require('./routes/beds')
+const applicationsRoutes = require('./routes/applications')
+const usersRoutes = require('./routes/users')
 const structureRoutes = require('./routes/structure')
-const groupRoutes = require('./routes/groups')
-const logsRoutes = require('./routes/logs')
-const fileRoutes = require('./routes/files')
+const groupsRoutes = require('./routes/groups')
+const filesRoutes = require('./routes/files')
 
 const app = express()
 const PORT = process.env.PORT || 3000
@@ -75,10 +74,10 @@ app.use(
       'Accept',
       'Authorization',
       'Cache-Control',
-      'Pragma'
+      'Pragma',
     ],
     exposedHeaders: ['Authorization'],
-    optionsSuccessStatus: 200 // Для старых браузеров
+    optionsSuccessStatus: 200, // Для старых браузеров
   }),
 )
 app.use(morgan('combined')) // Логирование
@@ -91,8 +90,11 @@ app.use((req, res, next) => {
   }
   res.header('Access-Control-Allow-Credentials', 'true')
   res.header('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,PATCH,OPTIONS')
-  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, Cache-Control, Pragma')
-  
+  res.header(
+    'Access-Control-Allow-Headers',
+    'Origin, X-Requested-With, Content-Type, Accept, Authorization, Cache-Control, Pragma',
+  )
+
   if (req.method === 'OPTIONS') {
     res.sendStatus(200)
   } else {
@@ -131,23 +133,22 @@ app.use(async (req, res, next) => {
 })
 
 // Middleware для логирования API запросов
-app.use(apiLoggingMiddleware)
+app.use(requestLogger)
 
 // Routes
 app.use('/', welcomeRoutes) // Страница приветствия
 app.use('/api/auth', authRoutes)
 app.use('/api/profile', profileRoutes)
-app.use('/api/dormitories', dormitoryRoutes)
-app.use('/api/floors', floorRoutes)
-app.use('/api/blocks', blockRoutes)
-app.use('/api/rooms', roomRoutes)
-app.use('/api/beds', bedRoutes)
-app.use('/api/applications', applicationRoutes)
-app.use('/api/users', userRoutes)
+app.use('/api/dormitories', dormitoriesRoutes)
+app.use('/api/floors', floorsRoutes)
+app.use('/api/blocks', blocksRoutes)
+app.use('/api/rooms', roomsRoutes)
+app.use('/api/beds', bedsRoutes)
+app.use('/api/applications', applicationsRoutes)
+app.use('/api/users', usersRoutes)
 app.use('/api/structure', structureRoutes)
-app.use('/api/groups', groupRoutes)
-app.use('/api/logs', logsRoutes)
-app.use('/api/files', fileRoutes)
+app.use('/api/groups', groupsRoutes)
+app.use('/api/files', filesRoutes)
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -164,7 +165,7 @@ app.use((req, res) => {
 })
 
 // Global error handler
-app.use(errorLoggingMiddleware)
+app.use(errorLogger)
 app.use((error, req, res, next) => {
   console.error('Ошибка сервера:', error)
 

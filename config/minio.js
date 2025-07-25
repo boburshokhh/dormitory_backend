@@ -165,6 +165,19 @@ const getFileMetadata = async (fileName) => {
   }
 }
 
+// Функция для получения файла как stream
+const getFileStream = async (fileName) => {
+  try {
+    console.log(`🔄 Получение файла из MinIO: ${fileName}`)
+    const stream = await minioClient.getObject(BUCKET_NAME, fileName)
+    console.log(`✅ Stream файла получен: ${fileName}`)
+    return stream
+  } catch (error) {
+    console.error(`❌ Ошибка получения файла ${fileName}:`, error)
+    throw error
+  }
+}
+
 module.exports = {
   minioClient,
   BUCKET_NAME,
@@ -176,4 +189,5 @@ module.exports = {
   deleteFile,
   fileExists,
   getFileMetadata,
+  getFileStream,
 }

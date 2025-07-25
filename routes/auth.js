@@ -2,9 +2,8 @@ const express = require('express')
 const bcrypt = require('bcryptjs')
 const jwt = require('jsonwebtoken')
 const { query, transaction } = require('../config/database')
-const notificationService = require('../services/notificationService')
-const loggingService = require('../services/loggingService')
 const { authenticateToken } = require('../middleware/auth')
+const notificationService = require('../services/notificationService')
 
 const router = express.Router()
 
@@ -65,20 +64,10 @@ router.post('/register-request', async (req, res) => {
     }
 
     // Генерируем и отправляем код
-    const { code, hashedCode, result } = await notificationService.sendVerificationCode(
+    const { code, hashedCode, result } = await notificationService.sendVerificationEmail(
       normalizedContact,
       contactType,
     )
-
-    // Логируем отправку кода подтверждения
-    await loggingService.logVerificationCode({
-      contact: normalizedContact,
-      contactType,
-      actionType: 'verification_code_sent',
-      success: result.success,
-      errorMessage: result.success ? null : result.error,
-      req,
-    })
 
     if (!result.success) {
       console.error('Ошибка отправки кода:', result.error)
@@ -141,7 +130,7 @@ router.post('/register-verify', async (req, res) => {
       return res.status(400).json({ error: 'Логин может содержать только буквы, цифры, _ и -' })
     }
 
-    await transaction(async (client) => {
+    await query(async (client) => {
       // Проверяем код
       const codeResult = await client.query(
         `SELECT code_hash, contact_type, attempts, expires_at 
@@ -200,14 +189,14 @@ router.post('/register-verify', async (req, res) => {
       await client.query('DELETE FROM verification_codes WHERE contact = $1', [contact])
 
       // Логируем успешную регистрацию
-      await loggingService.logUserActivity({
-        userId: user.id,
-        actionType: 'register_success',
-        actionDescription: 'User registered successfully',
-        req,
-        success: true,
-        requestData: { username, contact, contactType: contact_type },
-      })
+      // await loggingService.logUserActivity({
+      //   userId: user.id,
+      //   actionType: 'register_success',
+      //   actionDescription: 'User registered successfully',
+      //   req,
+      //   success: true,
+      //   requestData: { username, contact, contactType: contact_type },
+      // })
 
       // Генерируем токены
       const tokens = generateTokens(user)
@@ -263,15 +252,15 @@ router.post('/login', async (req, res) => {
       )
 
       // Логируем неудачную попытку входа
-      await loggingService.logUserActivity({
-        userId: null,
-        actionType: 'login_failed',
-        actionDescription: 'Login failed - user not found',
-        req,
-        success: false,
-        errorMessage: 'Неверный логин или пароль',
-        requestData: { username },
-      })
+      // await loggingService.logUserActivity({
+      //   userId: null,
+      //   actionType: 'login_failed',
+      //   actionDescription: 'Login failed - user not found',
+      //   req,
+      //   success: false,
+      //   errorMessage: 'Неверный логин или пароль',
+      //   requestData: { username },
+      // })
 
       return res.status(401).json({ error: 'Неверный логин или пароль' })
     }
@@ -289,15 +278,15 @@ router.post('/login', async (req, res) => {
       )
 
       // Логируем неудачную попытку входа
-      await loggingService.logUserActivity({
-        userId: user.id,
-        actionType: 'login_failed',
-        actionDescription: 'Login failed - wrong password',
-        req,
-        success: false,
-        errorMessage: 'Неверный логин или пароль',
-        requestData: { username },
-      })
+      // await loggingService.logUserActivity({
+      //   userId: user.id,
+      //   actionType: 'login_failed',
+      //   actionDescription: 'Login failed - wrong password',
+      //   req,
+      //   success: false,
+      //   errorMessage: 'Неверный логин или пароль',
+      //   requestData: { username },
+      // })
 
       return res.status(401).json({ error: 'Неверный логин или пароль' })
     }
@@ -309,14 +298,14 @@ router.post('/login', async (req, res) => {
     ])
 
     // Логируем успешный вход
-    await loggingService.logUserActivity({
-      userId: user.id,
-      actionType: 'login_success',
-      actionDescription: 'User logged in successfully',
-      req,
-      success: true,
-      requestData: { username },
-    })
+    // await loggingService.logUserActivity({
+    //   userId: user.id,
+    //   actionType: 'login_success',
+    //   actionDescription: 'User logged in successfully',
+    //   req,
+    //   success: true,
+    //   requestData: { username },
+    // })
 
     // Генерируем токены
     const tokens = generateTokens(user)
@@ -410,13 +399,13 @@ router.post('/refresh', async (req, res) => {
 router.post('/logout', authenticateToken, async (req, res) => {
   try {
     // Логируем выход из системы
-    await loggingService.logUserActivity({
-      userId: req.user.id,
-      actionType: 'logout',
-      actionDescription: 'User logged out',
-      req,
-      success: true,
-    })
+    // await loggingService.logUserActivity({
+    //   userId: req.user.id,
+    //   actionType: 'logout',
+    //   actionDescription: 'User logged out',
+    //   req,
+    //   success: true,
+    // })
 
     // В будущем здесь можно добавить blacklist токенов
     console.log(`👋 Пользователь ${req.user.username} вышел из системы`)

@@ -1,7 +1,7 @@
 const express = require('express')
 const { query } = require('../config/database')
 const { authenticateToken } = require('../middleware/auth')
-const loggingService = require('../services/loggingService')
+const filesController = require('../controllers/filesController')
 
 const router = express.Router()
 
@@ -15,13 +15,15 @@ router.get('/', async (req, res) => {
     const result = await query(
       `
       SELECT 
-        id, username, contact, contact_type, first_name, last_name, middle_name,
-        birth_date, gender, region, address, phone, parent_phone, email,
-        passport_series, passport_pinfl,
-        course, group_id, student_id, is_profile_filled, role,
-        created_at, updated_at
-      FROM users 
-      WHERE id = $1
+        u.id, u.username, u.contact, u.contact_type, u.first_name, u.last_name, u.middle_name,
+        u.birth_date, u.gender, u.region, u.address, u.phone, u.parent_phone, u.email,
+        u.passport_series, u.passport_pinfl,
+        u.course, u.group_id, u.student_id, u.is_profile_filled, u.role,
+        u.created_at, u.updated_at, u.avatar_file_id,
+        f.file_name as avatar_file_name, f.public_url as avatar_url
+      FROM users u
+      LEFT JOIN files f ON u.avatar_file_id = f.id AND f.status = 'active' AND f.deleted_at IS NULL
+      WHERE u.id = $1
     `,
       [req.user.id],
     )
@@ -31,29 +33,6 @@ router.get('/', async (req, res) => {
     }
 
     const profile = result.rows[0]
-
-    // Вычисляем процент заполнения профиля для студентов
-    let profileCompletionPercentage = 100
-    if (profile.role === 'student') {
-      const fields = [
-        'first_name',
-        'last_name',
-        'middle_name',
-        'birth_date',
-        'gender',
-        'region',
-        'address',
-        'phone',
-        'parent_phone',
-        'passport_series',
-        'passport_pinfl',
-        'course',
-        'group_id',
-      ]
-
-      const filledFields = fields.filter((field) => profile[field])
-      profileCompletionPercentage = Math.round((filledFields.length / fields.length) * 100)
-    }
 
     // Получаем информацию о группе, если она выбрана
     let groupInfo = null
@@ -71,7 +50,6 @@ router.get('/', async (req, res) => {
       profile: {
         ...profile,
         group: groupInfo,
-        profile_completion_percentage: profileCompletionPercentage,
         birth_date: profile.birth_date ? profile.birth_date.toISOString().split('T')[0] : null,
       },
     })
@@ -326,16 +304,6 @@ router.put('/', async (req, res) => {
       }
     }
 
-    // Логируем обновление профиля
-    await loggingService.logUserActivity({
-      userId: req.user.id,
-      actionType: 'profile_update',
-      actionDescription: 'User updated profile information',
-      req,
-      success: true,
-      requestData: { updatedFields: Object.keys(req.body) },
-    })
-
     res.json({
       message: 'Профиль успешно обновлен',
       profile: {
@@ -347,20 +315,66 @@ router.put('/', async (req, res) => {
       },
     })
   } catch (error) {
-    console.error('Ошибка обновления профиля:', error)
+    console.error('❌ Ошибка обновления профиля:', error)
+    console.error('🔍 Stack trace:', error.stack)
 
-    // Логируем ошибку обновления профиля
-    await loggingService.logUserActivity({
-      userId: req.user.id,
-      actionType: 'profile_update',
-      actionDescription: 'Failed to update profile information',
-      req,
-      success: false,
-      errorMessage: error.message,
-      requestData: { updatedFields: Object.keys(req.body) },
+    res.status(500).json({
+      error: 'Ошибка обновления профиля',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined,
     })
+  }
+})
 
-    res.status(500).json({ error: 'Ошибка обновления профиля' })
+// PUT /api/profile/avatar - Установить файл как аватар
+router.put('/avatar', async (req, res) => {
+  try {
+    const { fileId } = req.body
+
+    if (!fileId) {
+      return res.status(400).json({
+        error: 'ID файла обязателен',
+      })
+    }
+
+    // Проверяем, что файл существует и принадлежит пользователю
+    const fileResult = await query(
+      `SELECT id, file_type, file_name FROM files 
+       WHERE id = $1 AND user_id = $2 AND status = 'active' AND deleted_at IS NULL`,
+      [fileId, req.user.id],
+    )
+
+    if (fileResult.rows.length === 0) {
+      return res.status(404).json({
+        error: 'Файл не найден или не принадлежит вам',
+      })
+    }
+
+    const file = fileResult.rows[0]
+
+    // Проверяем, что это фото
+    if (file.file_type !== 'photo_3x4') {
+      return res.status(400).json({
+        error: 'Только фото 3x4 можно установить как аватар',
+      })
+    }
+
+    // Обновляем профиль пользователя с avatar_file_id
+    await query(`UPDATE users SET avatar_file_id = $1, updated_at = NOW() WHERE id = $2`, [
+      fileId,
+      req.user.id,
+    ])
+
+    res.json({
+      message: 'Аватар успешно установлен',
+      avatarFileId: fileId,
+    })
+  } catch (error) {
+    console.error('❌ Ошибка установки аватара:', error)
+
+    res.status(500).json({
+      error: 'Ошибка установки аватара',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined,
+    })
   }
 })
 
@@ -430,15 +444,6 @@ router.post('/submit', async (req, res) => {
       [req.user.id],
     )
 
-    // Логируем отправку профиля
-    await loggingService.logUserActivity({
-      userId: req.user.id,
-      actionType: 'profile_submit',
-      actionDescription: 'User submitted completed profile',
-      req,
-      success: true,
-    })
-
     res.json({
       message: 'Профиль успешно отправлен! Теперь вы можете подавать заявку на место в общежитии.',
       profile_submitted: true,
@@ -446,19 +451,247 @@ router.post('/submit', async (req, res) => {
   } catch (error) {
     console.error('Ошибка отправки профиля:', error)
 
-    // Логируем ошибку отправки профиля
-    await loggingService.logUserActivity({
-      userId: req.user.id,
-      actionType: 'profile_submit',
-      actionDescription: 'Failed to submit profile',
-      req,
-      success: false,
-      errorMessage: error.message,
-    })
-
     res.status(500).json({ error: 'Ошибка отправки профиля' })
   }
 })
+
+// POST /api/profile/submit-with-files - Финальная отправка профиля с файлами
+router.post(
+  '/submit-with-files',
+  filesController.getUploadMiddleware(),
+  filesController.handleMulterError,
+  async (req, res) => {
+    try {
+      const {
+        first_name,
+        last_name,
+        middle_name,
+        birth_date,
+        gender,
+        region,
+        address,
+        phone,
+        parent_phone,
+        passport_series,
+        passport_pinfl,
+        course,
+        group_id,
+        student_id,
+      } = req.body
+
+      const files = req.files
+
+      // Валидация обязательных полей профиля
+      const requiredFields = {
+        first_name: 'Имя',
+        last_name: 'Фамилия',
+        middle_name: 'Отчество',
+        birth_date: 'Дата рождения',
+        gender: 'Пол',
+        region: 'Регион',
+        address: 'Адрес',
+        phone: 'Телефон',
+        parent_phone: 'Телефон родителя',
+        passport_series: 'Серия паспорта',
+        passport_pinfl: 'ПИНФЛ',
+        course: 'Курс',
+        group_id: 'Группа',
+      }
+
+      const missingFields = Object.keys(requiredFields).filter((field) => !req.body[field])
+
+      if (missingFields.length > 0) {
+        return res.status(400).json({
+          error: 'Не заполнены обязательные поля',
+          missingFields: missingFields.map((field) => requiredFields[field]),
+        })
+      }
+
+      // Валидация файлов
+      if (!files || files.length === 0) {
+        return res.status(400).json({
+          error: 'Необходимо загрузить файлы паспорта и фото',
+        })
+      }
+
+      // Проверяем наличие паспорта и фото
+      const fileTypes = Array.isArray(req.body.fileTypes)
+        ? req.body.fileTypes
+        : [req.body.fileTypes].filter(Boolean)
+
+      const hasPassport = fileTypes.includes('passport')
+      const hasPhoto = fileTypes.includes('photo_3x4')
+
+      if (!hasPassport) {
+        return res.status(400).json({
+          error: 'Необходимо загрузить скан паспорта',
+        })
+      }
+
+      if (!hasPhoto) {
+        return res.status(400).json({
+          error: 'Необходимо загрузить фото 3x4',
+        })
+      }
+
+      // Проверяем, что профиль еще не заполнен
+      const existingProfile = await query('SELECT is_profile_filled FROM users WHERE id = $1', [
+        req.user.id,
+      ])
+
+      if (existingProfile.rows[0]?.is_profile_filled) {
+        return res.status(400).json({
+          error: 'Профиль уже был отправлен ранее',
+        })
+      }
+
+      // Дополнительные валидации
+      // Валидация даты рождения
+      const birthDate = new Date(birth_date)
+      const today = new Date()
+      const age = today.getFullYear() - birthDate.getFullYear()
+
+      if (age < 16 || age > 100) {
+        return res.status(400).json({
+          error: 'Возраст должен быть от 16 до 100 лет',
+        })
+      }
+
+      // Валидация ПИНФЛ
+      if (!/^[0-9]{14}$/.test(passport_pinfl)) {
+        return res.status(400).json({
+          error: 'ПИНФЛ должен содержать ровно 14 цифр',
+        })
+      }
+
+      // Проверяем уникальность ПИНФЛ
+      const existingUser = await query(
+        'SELECT id FROM users WHERE passport_pinfl = $1 AND id != $2',
+        [passport_pinfl, req.user.id],
+      )
+
+      if (existingUser.rows.length > 0) {
+        return res.status(400).json({
+          error: 'Пользователь с таким ПИНФЛ уже существует',
+        })
+      }
+
+      // Проверяем существование группы
+      const groupResult = await query(
+        'SELECT id, name, course as group_course FROM groups WHERE id = $1 AND is_active = true',
+        [group_id],
+      )
+
+      if (groupResult.rows.length === 0) {
+        return res.status(400).json({
+          error: 'Выбранная группа не найдена или неактивна',
+        })
+      }
+
+      const group = groupResult.rows[0]
+      if (parseInt(course) !== parseInt(group.group_course)) {
+        return res.status(400).json({
+          error: `Выбранная группа относится к ${group.group_course} курсу, а не к ${course}`,
+        })
+      }
+
+      // Начинаем транзакцию
+      await query('BEGIN')
+
+      try {
+        // 1. Обновляем профиль пользователя
+        const updateResult = await query(
+          `
+          UPDATE users 
+          SET 
+            first_name = $1, last_name = $2, middle_name = $3,
+            birth_date = $4, gender = $5, region = $6, address = $7,
+            phone = $8, parent_phone = $9, passport_series = $10,
+            passport_pinfl = $11, course = $12, group_id = $13,
+            student_id = $14, is_profile_filled = true, updated_at = NOW()
+          WHERE id = $15
+          RETURNING id, first_name, last_name, email
+        `,
+          [
+            first_name.trim(),
+            last_name.trim(),
+            middle_name?.trim(),
+            birth_date,
+            gender,
+            region?.trim(),
+            address?.trim(),
+            phone?.trim(),
+            parent_phone?.trim(),
+            passport_series?.trim(),
+            passport_pinfl.trim(),
+            course,
+            group_id,
+            student_id?.trim(),
+            req.user.id,
+          ],
+        )
+
+        if (updateResult.rows.length === 0) {
+          throw new Error('Не удалось обновить профиль')
+        }
+
+        // 2. Загружаем файлы через файловый сервис
+        const filesService = require('../services/filesService')
+
+        // Создаем модифицированный массив файлов с правильными типами
+        const filesWithTypes = files.map((file, index) => {
+          const fileType = fileTypes[index] || 'document'
+          return {
+            ...file,
+            fieldname: fileType, // Устанавливаем fieldname для правильного определения типа
+          }
+        })
+
+        const { uploadResults, errors } = await filesService.uploadFiles(
+          filesWithTypes,
+          {
+            relatedEntityType: 'profile',
+            relatedEntityId: req.user.id,
+          },
+          req.user.id,
+        )
+
+        if (errors.length > 0) {
+          throw new Error(`Ошибки загрузки файлов: ${errors.map((e) => e.error).join(', ')}`)
+        }
+
+        // 3. Активируем загруженные файлы
+        const fileIds = uploadResults.map((result) => result.id)
+        await filesService.activateFiles(fileIds, req.user.id, 'profile', req.user.id)
+
+        // Коммитим транзакцию
+        await query('COMMIT')
+
+        res.json({
+          success: true,
+          message:
+            'Профиль и файлы успешно загружены! Теперь вы можете подавать заявку на место в общежитии.',
+          data: {
+            profile: updateResult.rows[0],
+            uploadedFiles: uploadResults,
+            filesCount: uploadResults.length,
+          },
+        })
+      } catch (innerError) {
+        // Откатываем транзакцию при ошибке
+        await query('ROLLBACK')
+        throw innerError
+      }
+    } catch (error) {
+      console.error('Ошибка отправки профиля с файлами:', error)
+
+      res.status(500).json({
+        error: 'Ошибка отправки профиля с файлами',
+        details: error.message,
+      })
+    }
+  },
+)
 
 // GET /api/profile/regions - Получить список регионов для выбора
 router.get('/regions', async (req, res) => {

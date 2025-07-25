@@ -8,6 +8,7 @@ const {
   deleteFile,
   generateFileName,
   fileExists,
+  getFileStream,
 } = require('../config/minio')
 const {
   FILE_STATUSES,
@@ -135,6 +136,48 @@ class FilesService {
     } catch (error) {
       if (error.type) throw error
       throw createDatabaseError('Ошибка получения файла', 'files', error)
+    }
+  }
+
+  // Получение файла как stream для скачивания
+  async downloadFileStream(fileId, userId, userRole) {
+    try {
+      const result = await query(
+        `SELECT * FROM files 
+         WHERE id = $1 AND status IN ($2, $3) AND deleted_at IS NULL`,
+        [fileId, FILE_STATUSES.ACTIVE, FILE_STATUSES.UPLOADING],
+      )
+
+      if (result.rows.length === 0) {
+        throw createNotFoundError('Файл', fileId)
+      }
+
+      const file = result.rows[0]
+
+      // Проверяем права доступа
+      if (file.user_id !== userId) {
+        if (!['admin', 'super_admin'].includes(userRole)) {
+          throw createPermissionError('скачивание чужих файлов')
+        }
+      }
+
+      console.log(`📥 Загружаем файл для скачивания: ${file.original_name}`)
+
+      // Получаем stream файла из MinIO
+      const fileStream = await getFileStream(file.file_name)
+
+      // Обновляем счетчик скачиваний
+      await query(`UPDATE files SET download_count = download_count + 1 WHERE id = $1`, [fileId])
+
+      return {
+        stream: fileStream,
+        fileName: file.original_name,
+        mimeType: file.mime_type,
+        fileSize: file.file_size,
+      }
+    } catch (error) {
+      if (error.type) throw error
+      throw createDatabaseError('Ошибка скачивания файла', 'files', error)
     }
   }
 
