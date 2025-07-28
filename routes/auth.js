@@ -64,7 +64,7 @@ router.post('/register-request', async (req, res) => {
     }
 
     // Генерируем и отправляем код
-    const { code, hashedCode, result } = await notificationService.sendVerificationEmail(
+    const { code, hashedCode, result } = await notificationService.sendVerificationCode(
       normalizedContact,
       contactType,
     )
@@ -130,7 +130,7 @@ router.post('/register-verify', async (req, res) => {
       return res.status(400).json({ error: 'Логин может содержать только буквы, цифры, _ и -' })
     }
 
-    await query(async (client) => {
+    const result = await transaction(async (client) => {
       // Проверяем код
       const codeResult = await client.query(
         `SELECT code_hash, contact_type, attempts, expires_at 
@@ -203,7 +203,7 @@ router.post('/register-verify', async (req, res) => {
 
       console.log(`✅ Новый пользователь зарегистрирован: ${username} (${contact})`)
 
-      return res.json({
+      return {
         message: 'Регистрация завершена успешно',
         user: {
           id: user.id,
@@ -216,8 +216,10 @@ router.post('/register-verify', async (req, res) => {
         },
         tokens,
         isNewUser: true,
-      })
+      }
     })
+
+    res.json(result)
   } catch (error) {
     console.error('Ошибка подтверждения регистрации:', error)
     res.status(400).json({ error: error.message || 'Ошибка регистрации' })

@@ -507,43 +507,53 @@ router.post(
         })
       }
 
-      // Валидация файлов
-      if (!files || files.length === 0) {
-        return res.status(400).json({
-          error: 'Необходимо загрузить файлы паспорта и фото',
-        })
-      }
+      // Проверяем информацию о существующих файлах
+      const existingPassportFileId = Array.isArray(req.body.existing_passport_file_id)
+        ? req.body.existing_passport_file_id[0]
+        : req.body.existing_passport_file_id
 
-      // Проверяем наличие паспорта и фото
+      const existingPhotoFileId = Array.isArray(req.body.existing_photo_file_id)
+        ? req.body.existing_photo_file_id[0]
+        : req.body.existing_photo_file_id
+
+      // Валидация файлов (новые + существующие)
       const fileTypes = Array.isArray(req.body.fileTypes)
         ? req.body.fileTypes
         : [req.body.fileTypes].filter(Boolean)
 
-      const hasPassport = fileTypes.includes('passport')
-      const hasPhoto = fileTypes.includes('photo_3x4')
+      const hasNewPassport = fileTypes.includes('passport')
+      const hasNewPhoto = fileTypes.includes('photo_3x4')
+      const hasExistingPassport = !!existingPassportFileId
+      const hasExistingPhoto = !!existingPhotoFileId
 
-      if (!hasPassport) {
+      // Проверяем наличие паспорта (новый или существующий)
+      if (!hasNewPassport && !hasExistingPassport) {
         return res.status(400).json({
           error: 'Необходимо загрузить скан паспорта',
         })
       }
 
-      if (!hasPhoto) {
+      // Проверяем наличие фото (новое или существующее)
+      if (!hasNewPhoto && !hasExistingPhoto) {
         return res.status(400).json({
           error: 'Необходимо загрузить фото 3x4',
         })
       }
 
-      // Проверяем, что профиль еще не заполнен
+      // Проверяем, что профиль еще не заполнен (только для первого заполнения)
       const existingProfile = await query('SELECT is_profile_filled FROM users WHERE id = $1', [
         req.user.id,
       ])
 
-      if (existingProfile.rows[0]?.is_profile_filled) {
-        return res.status(400).json({
-          error: 'Профиль уже был отправлен ранее',
-        })
-      }
+      // Если профиль уже заполнен, это режим редактирования
+      const isEditMode = existingProfile.rows[0]?.is_profile_filled
+
+      // В режиме редактирования не нужно проверять, что профиль уже заполнен
+      // if (isEditMode) {
+      //   return res.status(400).json({
+      //     error: 'Профиль уже был отправлен ранее',
+      //   })
+      // }
 
       // Дополнительные валидации
       // Валидация даты рождения
@@ -635,46 +645,87 @@ router.post(
           throw new Error('Не удалось обновить профиль')
         }
 
-        // 2. Загружаем файлы через файловый сервис
+        // 2. Обрабатываем файлы (новые и существующие)
         const filesService = require('../services/filesService')
 
-        // Создаем модифицированный массив файлов с правильными типами
-        const filesWithTypes = files.map((file, index) => {
-          const fileType = fileTypes[index] || 'document'
-          return {
-            ...file,
-            fieldname: fileType, // Устанавливаем fieldname для правильного определения типа
+        let allFileIds = []
+        let uploadResults = []
+
+        // Обрабатываем новые файлы
+        if (files && files.length > 0) {
+          // Создаем модифицированный массив файлов с правильными типами
+          const filesWithTypes = files.map((file, index) => {
+            const fileType = fileTypes[index] || 'document'
+            return {
+              ...file,
+              fieldname: fileType, // Устанавливаем fieldname для правильного определения типа
+            }
+          })
+
+          const { uploadResults: newUploadResults, errors } = await filesService.uploadFiles(
+            filesWithTypes,
+            {
+              relatedEntityType: 'profile',
+              relatedEntityId: req.user.id,
+            },
+            req.user.id,
+          )
+
+          if (errors.length > 0) {
+            throw new Error(`Ошибки загрузки файлов: ${errors.map((e) => e.error).join(', ')}`)
           }
-        })
 
-        const { uploadResults, errors } = await filesService.uploadFiles(
-          filesWithTypes,
-          {
-            relatedEntityType: 'profile',
-            relatedEntityId: req.user.id,
-          },
-          req.user.id,
-        )
-
-        if (errors.length > 0) {
-          throw new Error(`Ошибки загрузки файлов: ${errors.map((e) => e.error).join(', ')}`)
+          uploadResults = newUploadResults
+          allFileIds = uploadResults.map((result) => result.id).filter(Boolean) // Убираем null/undefined
         }
 
-        // 3. Активируем загруженные файлы
-        const fileIds = uploadResults.map((result) => result.id)
-        await filesService.activateFiles(fileIds, req.user.id, 'profile', req.user.id)
+        // Добавляем существующие файлы (убираем дубликаты)
+        if (
+          existingPassportFileId &&
+          existingPassportFileId.trim() &&
+          !allFileIds.includes(existingPassportFileId)
+        ) {
+          allFileIds.push(existingPassportFileId)
+        }
+        if (
+          existingPhotoFileId &&
+          existingPhotoFileId.trim() &&
+          !allFileIds.includes(existingPhotoFileId)
+        ) {
+          allFileIds.push(existingPhotoFileId)
+        }
+
+        // 3. Активируем все файлы (новые и существующие)
+        if (allFileIds.length > 0) {
+          // Убираем дубликаты из массива и фильтруем пустые значения
+          const uniqueFileIds = [...new Set(allFileIds)].filter((id) => id && id.trim())
+
+          console.log('Активируем файлы:', {
+            allFileIds,
+            uniqueFileIds,
+            existingPassportFileId,
+            existingPhotoFileId,
+            newFilesCount: uploadResults.length,
+          })
+
+          if (uniqueFileIds.length > 0) {
+            await filesService.activateFiles(uniqueFileIds, req.user.id, 'profile', req.user.id)
+          }
+        }
 
         // Коммитим транзакцию
         await query('COMMIT')
 
         res.json({
           success: true,
-          message:
-            'Профиль и файлы успешно загружены! Теперь вы можете подавать заявку на место в общежитии.',
+          message: isEditMode
+            ? 'Профиль успешно обновлен!'
+            : 'Профиль и файлы успешно загружены! Теперь вы можете подавать заявку на место в общежитии.',
           data: {
             profile: updateResult.rows[0],
             uploadedFiles: uploadResults,
             filesCount: uploadResults.length,
+            isEditMode: isEditMode,
           },
         })
       } catch (innerError) {
@@ -692,6 +743,117 @@ router.post(
     }
   },
 )
+
+// GET /api/profile/accommodation - Получить информацию о размещении студента
+router.get('/accommodation', async (req, res) => {
+  try {
+    const result = await query(
+      `
+      SELECT 
+        -- Информация о койке и комнате
+        b.id as bed_id, b.bed_number, b.assigned_at,
+        r.id as room_id, r.room_number, r.block_room_number, r.bed_count,
+        -- Информация о блоке (если есть)
+        bl.id as block_id, bl.block_number,
+        -- Информация об этаже
+        COALESCE(f1.id, f2.id) as floor_id, 
+        COALESCE(f1.floor_number, f2.floor_number) as floor_number,
+        -- Информация об общежитии
+        d.id as dormitory_id, d.name as dormitory_name, d.type as dormitory_type,
+        d.address as dormitory_address
+      FROM users u
+      LEFT JOIN beds b ON u.id = b.student_id AND b.is_active = true
+      LEFT JOIN rooms r ON b.room_id = r.id AND r.is_active = true
+      LEFT JOIN floors f1 ON r.floor_id = f1.id AND f1.is_active = true
+      LEFT JOIN blocks bl ON r.block_id = bl.id AND bl.is_active = true
+      LEFT JOIN floors f2 ON bl.floor_id = f2.id AND f2.is_active = true
+      LEFT JOIN dormitories d ON (f1.dormitory_id = d.id OR f2.dormitory_id = d.id) AND d.is_active = true
+      WHERE u.id = $1
+    `,
+      [req.user.id],
+    )
+
+    const accommodation = result.rows[0]
+
+    // Если студент не размещен
+    if (!accommodation.bed_id) {
+      return res.json({
+        accommodation: null,
+        roommates: [],
+      })
+    }
+
+    // Получаем информацию о соседях по комнате
+    const roommatesResult = await query(
+      `
+      SELECT 
+        u.id, u.first_name, u.last_name, u.middle_name, u.student_id, 
+        u.group_name, u.course, u.phone, u.email,
+        g.name as group_full_name, g.faculty, g.speciality,
+        b.bed_number, b.assigned_at
+      FROM beds b
+      JOIN users u ON b.student_id = u.id
+      LEFT JOIN groups g ON u.group_id = g.id AND g.is_active = true
+      WHERE b.room_id = $1 AND b.student_id != $2 AND b.is_active = true
+      ORDER BY b.bed_number
+    `,
+      [accommodation.room_id, req.user.id],
+    )
+
+    const roommates = roommatesResult.rows.map((roommate) => ({
+      id: roommate.id,
+      firstName: roommate.first_name,
+      lastName: roommate.last_name,
+      middleName: roommate.middle_name,
+      fullName: `${roommate.last_name} ${roommate.first_name}${roommate.middle_name ? ` ${roommate.middle_name}` : ''}`,
+      studentId: roommate.student_id,
+      groupName: roommate.group_full_name || roommate.group_name, // Приоритет полному названию группы
+      course: roommate.course,
+      faculty: roommate.faculty,
+      speciality: roommate.speciality,
+      bedNumber: roommate.bed_number,
+      assignedAt: roommate.assigned_at,
+      phone: roommate.phone,
+      email: roommate.email,
+    }))
+
+    const accommodationInfo = {
+      bedId: accommodation.bed_id,
+      bedNumber: accommodation.bed_number,
+      assignedAt: accommodation.assigned_at,
+      room: {
+        id: accommodation.room_id,
+        number: accommodation.room_number,
+        blockRoomNumber: accommodation.block_room_number,
+        bedCount: accommodation.bed_count,
+      },
+      block: accommodation.block_id
+        ? {
+            id: accommodation.block_id,
+            number: accommodation.block_number,
+          }
+        : null,
+      floor: {
+        id: accommodation.floor_id,
+        number: accommodation.floor_number,
+      },
+      dormitory: {
+        id: accommodation.dormitory_id,
+        name: accommodation.dormitory_name,
+        type: accommodation.dormitory_type === 'type_1' ? 1 : 2,
+        address: accommodation.dormitory_address,
+      },
+    }
+
+    res.json({
+      accommodation: accommodationInfo,
+      roommates,
+    })
+  } catch (error) {
+    console.error('Ошибка получения информации о размещении:', error)
+    res.status(500).json({ error: 'Ошибка получения информации о размещении' })
+  }
+})
 
 // GET /api/profile/regions - Получить список регионов для выбора
 router.get('/regions', async (req, res) => {

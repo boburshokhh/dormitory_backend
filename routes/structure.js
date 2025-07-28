@@ -113,9 +113,11 @@ router.get('/dormitories/:id', validateUUID('id'), async (req, res) => {
           roomsResult.rows.map(async (room) => {
             const bedsResult = await query(
               `SELECT b.id, b.bed_number, b.is_occupied, b.student_id, b.assigned_at,
-                      u.first_name, u.last_name, u.middle_name, u.student_id as student_number, u.group_name, u.course
+                      u.first_name, u.last_name, u.middle_name, u.student_id as student_number, 
+                      u.group_name, u.course, g.name as group_full_name, g.faculty, g.speciality
                FROM beds b
                LEFT JOIN users u ON b.student_id = u.id
+               LEFT JOIN groups g ON u.group_id = g.id AND g.is_active = true
                WHERE b.room_id = $1 AND b.is_active = true 
                ORDER BY b.bed_number`,
               [room.id],
@@ -138,8 +140,10 @@ router.get('/dormitories/:id', validateUUID('id'), async (req, res) => {
                       lastName: bed.last_name,
                       middleName: bed.middle_name,
                       studentNumber: bed.student_number,
-                      groupName: bed.group_name,
+                      groupName: bed.group_full_name || bed.group_name, // Приоритет полному названию группы
                       course: bed.course,
+                      faculty: bed.faculty,
+                      speciality: bed.speciality,
                     }
                   : null,
               })),
@@ -174,9 +178,11 @@ router.get('/dormitories/:id', validateUUID('id'), async (req, res) => {
               roomsResult.rows.map(async (room) => {
                 const bedsResult = await query(
                   `SELECT b.id, b.bed_number, b.is_occupied, b.student_id, b.assigned_at,
-                          u.first_name, u.last_name, u.middle_name, u.student_id as student_number, u.group_name, u.course
+                          u.first_name, u.last_name, u.middle_name, u.student_id as student_number, 
+                          u.group_name, u.course, g.name as group_full_name, g.faculty, g.speciality
                    FROM beds b
                    LEFT JOIN users u ON b.student_id = u.id
+                   LEFT JOIN groups g ON u.group_id = g.id AND g.is_active = true
                    WHERE b.room_id = $1 AND b.is_active = true 
                    ORDER BY b.bed_number`,
                   [room.id],
@@ -200,8 +206,10 @@ router.get('/dormitories/:id', validateUUID('id'), async (req, res) => {
                           lastName: bed.last_name,
                           middleName: bed.middle_name,
                           studentNumber: bed.student_number,
-                          groupName: bed.group_name,
+                          groupName: bed.group_full_name || bed.group_name, // Приоритет полному названию группы
                           course: bed.course,
+                          faculty: bed.faculty,
+                          speciality: bed.speciality,
                         }
                       : null,
                   })),
@@ -283,11 +291,13 @@ router.get('/students', requireAdmin, async (req, res) => {
     }
 
     const result = await query(
-      `SELECT DISTINCT u.id, u.first_name, u.last_name, u.middle_name, 
+      `SELECT DISTINCT ON (u.id) u.id, u.first_name, u.last_name, u.middle_name, 
               u.student_id, u.group_name, u.course, u.phone, u.email,
+              g.name as group_full_name, g.faculty, g.speciality,
               b.id as bed_id, r.room_number, d.name as dormitory_name,
               a.id as application_id, a.status as application_status, a.submission_date
        FROM users u
+       LEFT JOIN groups g ON u.group_id = g.id AND g.is_active = true
        LEFT JOIN beds b ON u.id = b.student_id AND b.is_active = true
        LEFT JOIN rooms r ON b.room_id = r.id
        LEFT JOIN floors f ON r.floor_id = f.id
@@ -296,7 +306,7 @@ router.get('/students', requireAdmin, async (req, res) => {
        LEFT JOIN dormitories d ON (f.dormitory_id = d.id OR f2.dormitory_id = d.id)
        LEFT JOIN applications a ON u.id = a.student_id AND a.status = 'approved'
        ${whereClause}
-       ORDER BY u.last_name, u.first_name
+       ORDER BY u.id, a.submission_date DESC NULLS LAST
        LIMIT 100`,
       params,
     )
@@ -308,8 +318,10 @@ router.get('/students', requireAdmin, async (req, res) => {
       middleName: row.middle_name,
       fullName: `${row.last_name} ${row.first_name}${row.middle_name ? ` ${row.middle_name}` : ''}`,
       studentId: row.student_id,
-      groupName: row.group_name,
+      groupName: row.group_full_name || row.group_name, // Приоритет полному названию группы
       course: row.course,
+      faculty: row.faculty,
+      speciality: row.speciality,
       phone: row.phone,
       email: row.email,
       currentBed: row.bed_id
