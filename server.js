@@ -3,11 +3,12 @@ const cors = require('cors')
 const helmet = require('helmet')
 const morgan = require('morgan')
 const rateLimit = require('express-rate-limit')
-require('dotenv').config({ path: './services/config.env' })
+require('dotenv').config({ path: './.env' })
 
 const db = require('./config/database')
 const { initializeBucket } = require('./config/minio')
 const { requestLogger, errorLogger } = require('./middleware/logging')
+const { clientIPMiddleware } = require('./middleware/clientIP')
 const welcomeRoutes = require('./routes/welcome')
 const authRoutes = require('./routes/auth')
 const profileRoutes = require('./routes/profile')
@@ -131,6 +132,9 @@ app.use(async (req, res, next) => {
     res.status(503).json({ error: 'Сервис временно недоступен' })
   }
 })
+
+// Middleware для получения IP адреса клиента
+app.use(clientIPMiddleware)
 
 // Middleware для логирования API запросов
 app.use(requestLogger)

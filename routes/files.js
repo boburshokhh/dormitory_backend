@@ -48,4 +48,33 @@ router.post(
   filesController.cleanupDuplicateFiles.bind(filesController),
 )
 
+// Новые маршруты для скачивания файлов
+// Генерация временной ссылки для скачивания
+router.post(
+  '/:id/temp-link',
+  validateUUID('id'),
+  filesController.generateTempLink.bind(filesController),
+)
+
+// Прямое скачивание файла через бэкенд (прокси)
+router.get(
+  '/:id/download',
+  validateUUID('id'),
+  filesController.downloadFileProxy.bind(filesController),
+)
+
+// Скачивание файла по временной ссылке (без аутентификации)
+router.get('/download/temp/:token', filesController.downloadFileByTempLink.bind(filesController))
+
+// Дополнительные маршруты для управления временными ссылками
+// Получение статистики временных ссылок пользователя
+router.get('/temp-links/stats', filesController.getTempLinksStats.bind(filesController))
+
+// Очистка истекших временных ссылок (только для админов)
+router.post(
+  '/temp-links/cleanup',
+  requireAdmin,
+  filesController.cleanupExpiredTempLinks.bind(filesController),
+)
+
 module.exports = router

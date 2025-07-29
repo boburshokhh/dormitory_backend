@@ -12,6 +12,11 @@ const {
   validateUUID,
   validateFileDownload,
 } = require('../validators/fileValidator')
+const {
+  validateTempLinkCreation,
+  validateTempLinkToken,
+  validateTempLinksStatsParams,
+} = require('../validators/tempLinkValidator')
 const { FILE_LIMITS, ALLOWED_MIME_TYPES } = require('../constants/fileConstants')
 
 class FilesController {
@@ -276,6 +281,138 @@ class FilesController {
           },
           deleted: result.deleted,
           errors: result.errors,
+        },
+      })
+    } catch (error) {
+      await handleApplicationError(error, req, res, context)
+    }
+  }
+
+  // POST /api/files/:id/temp-link - Генерация временной ссылки для скачивания
+  async generateTempLink(req, res) {
+    const context = { function: 'generateTempLink', actionType: 'temp_link_generation' }
+
+    try {
+      const fileId = validateUUID(req.params.id, 'ID файла')
+      const validatedData = validateTempLinkCreation(req.body)
+
+      // Генерируем временную ссылку через сервис
+      const result = await filesService.generateTempLink(
+        fileId,
+        req.user.id,
+        req.user.role,
+        validatedData.expiryHours,
+      )
+
+      res.json({
+        success: true,
+        message: 'Временная ссылка создана',
+        data: {
+          tempLink: result.tempLink,
+          expiresAt: result.expiresAt,
+          fileName: result.fileName,
+        },
+      })
+    } catch (error) {
+      await handleApplicationError(error, req, res, context)
+    }
+  }
+
+  // GET /api/files/:id/download - Прямое скачивание файла через бэкенд (прокси)
+  async downloadFileProxy(req, res) {
+    const context = { function: 'downloadFileProxy', actionType: 'file_download_proxy' }
+
+    try {
+      const fileId = validateUUID(req.params.id, 'ID файла')
+
+      // Получаем файл для скачивания через сервис
+      const fileData = await filesService.downloadFileStream(fileId, req.user.id, req.user.role)
+
+      // Устанавливаем заголовки для скачивания
+      res.setHeader('Content-Type', fileData.mimeType)
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="${encodeURIComponent(fileData.fileName)}"`,
+      )
+      res.setHeader('Content-Length', fileData.fileSize)
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate')
+      res.setHeader('Pragma', 'no-cache')
+      res.setHeader('Expires', '0')
+
+      // Отправляем файл как stream
+      fileData.stream.pipe(res)
+    } catch (error) {
+      await handleApplicationError(error, req, res, context)
+    }
+  }
+
+  // GET /api/files/download/temp/:token - Скачивание файла по временной ссылке (без аутентификации)
+  async downloadFileByTempLink(req, res) {
+    const context = { function: 'downloadFileByTempLink', actionType: 'file_download_temp_link' }
+
+    try {
+      const { token } = req.params
+      const validatedToken = validateTempLinkToken(token)
+
+      // Получаем файл по временной ссылке через сервис
+      const fileData = await filesService.downloadFileByTempLink(validatedToken, req)
+
+      // Устанавливаем заголовки для скачивания
+      res.setHeader('Content-Type', fileData.mimeType)
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="${encodeURIComponent(fileData.fileName)}"`,
+      )
+      res.setHeader('Content-Length', fileData.fileSize)
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate')
+      res.setHeader('Pragma', 'no-cache')
+      res.setHeader('Expires', '0')
+
+      // Отправляем файл как stream
+      fileData.stream.pipe(res)
+    } catch (error) {
+      await handleApplicationError(error, req, res, context)
+    }
+  }
+
+  // GET /api/files/temp-links/stats - Получение статистики временных ссылок
+  async getTempLinksStats(req, res) {
+    const context = { function: 'getTempLinksStats', actionType: 'temp_links_stats' }
+
+    try {
+      // Получаем статистику через сервис
+      const stats = await filesService.getTempLinksStats(req.user.id, req.user.role)
+
+      res.json({
+        success: true,
+        data: {
+          links: stats,
+          summary: {
+            total: stats.length,
+            active: stats.filter((link) => !link.isExpired && !link.isUsed).length,
+            used: stats.filter((link) => link.isUsed).length,
+            expired: stats.filter((link) => link.isExpired).length,
+          },
+        },
+      })
+    } catch (error) {
+      await handleApplicationError(error, req, res, context)
+    }
+  }
+
+  // POST /api/files/temp-links/cleanup - Очистка истекших временных ссылок
+  async cleanupExpiredTempLinks(req, res) {
+    const context = { function: 'cleanupExpiredTempLinks', actionType: 'temp_links_cleanup' }
+
+    try {
+      // Очищаем истекшие ссылки через сервис
+      const deletedCount = await filesService.cleanupExpiredTempLinks()
+
+      res.json({
+        success: true,
+        message: 'Очистка истекших временных ссылок завершена',
+        data: {
+          deletedCount,
         },
       })
     } catch (error) {

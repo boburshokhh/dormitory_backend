@@ -17,6 +17,11 @@ const {
   getFileTypeByFieldName,
 } = require('../constants/fileConstants')
 const {
+  TEMP_LINK_LIMITS,
+  TEMP_LINK_STATUSES,
+  TEMP_LINK_ERRORS,
+} = require('../constants/tempLinkConstants')
+const {
   createNotFoundError,
   createPermissionError,
   createBusinessLogicError,
@@ -684,6 +689,233 @@ class FilesService {
       relatedEntityId: file.related_entity_id,
       metadata: file.metadata,
     }
+  }
+
+  // === МЕТОДЫ ДЛЯ ВРЕМЕННЫХ ССЫЛОК ===
+
+  // Генерация временной ссылки для скачивания файла
+  async generateTempLink(
+    fileId,
+    userId,
+    userRole,
+    expiryHours = TEMP_LINK_LIMITS.DEFAULT_EXPIRY_HOURS,
+  ) {
+    try {
+      // Проверяем существование файла и права доступа
+      const result = await query(
+        `SELECT * FROM files 
+         WHERE id = $1 AND status IN ($2, $3) AND deleted_at IS NULL`,
+        [fileId, FILE_STATUSES.ACTIVE, FILE_STATUSES.UPLOADING],
+      )
+
+      if (result.rows.length === 0) {
+        throw createNotFoundError('Файл', fileId)
+      }
+
+      const file = result.rows[0]
+
+      // Проверяем права доступа
+      if (file.user_id !== userId) {
+        if (!['admin', 'super_admin'].includes(userRole)) {
+          throw createPermissionError('создание временных ссылок для чужих файлов')
+        }
+      }
+
+      // Валидация времени жизни ссылки
+      if (
+        expiryHours < TEMP_LINK_LIMITS.MIN_EXPIRY_HOURS ||
+        expiryHours > TEMP_LINK_LIMITS.MAX_EXPIRY_HOURS
+      ) {
+        throw createValidationError(
+          `Время жизни ссылки должно быть от ${TEMP_LINK_LIMITS.MIN_EXPIRY_HOURS} до ${TEMP_LINK_LIMITS.MAX_EXPIRY_HOURS} часов`,
+          'INVALID_EXPIRY_TIME',
+          { min: TEMP_LINK_LIMITS.MIN_EXPIRY_HOURS, max: TEMP_LINK_LIMITS.MAX_EXPIRY_HOURS },
+        )
+      }
+
+      // Проверяем количество активных ссылок пользователя
+      const activeLinksCount = await query(
+        `SELECT COUNT(*) as count FROM temp_download_links 
+         WHERE created_by = $1 AND expires_at > NOW() AND is_used = FALSE`,
+        [userId],
+      )
+
+      if (parseInt(activeLinksCount.rows[0].count) >= TEMP_LINK_LIMITS.MAX_ACTIVE_LINKS_PER_USER) {
+        throw createBusinessLogicError(
+          `Превышено максимальное количество активных ссылок (${TEMP_LINK_LIMITS.MAX_ACTIVE_LINKS_PER_USER})`,
+          'TOO_MANY_ACTIVE_LINKS',
+        )
+      }
+
+      // Проверяем количество ссылок на этот файл
+      const fileLinksCount = await query(
+        `SELECT COUNT(*) as count FROM temp_download_links 
+         WHERE file_id = $1 AND expires_at > NOW() AND is_used = FALSE`,
+        [fileId],
+      )
+
+      if (parseInt(fileLinksCount.rows[0].count) >= TEMP_LINK_LIMITS.MAX_LINKS_PER_FILE) {
+        throw createBusinessLogicError(
+          `Превышено максимальное количество ссылок на файл (${TEMP_LINK_LIMITS.MAX_LINKS_PER_FILE})`,
+          'TOO_MANY_FILE_LINKS',
+        )
+      }
+
+      // Генерируем уникальный токен
+      const token = this.generateSecureToken()
+      const expiresAt = new Date(Date.now() + expiryHours * 60 * 60 * 1000)
+
+      // Сохраняем временную ссылку в БД
+      await query(
+        `INSERT INTO temp_download_links (file_id, token, created_by, expires_at)
+         VALUES ($1, $2, $3, $4)`,
+        [fileId, token, userId, expiresAt],
+      )
+
+      // Формируем полный URL для скачивания
+      const baseUrl = process.env.API_BASE_URL || 'http://localhost:3000'
+      const tempLink = `${baseUrl}/api/files/download/temp/${token}`
+
+      console.log(`🔗 Создана временная ссылка для файла ${file.original_name}: ${tempLink}`)
+
+      return {
+        tempLink,
+        expiresAt,
+        fileName: file.original_name,
+      }
+    } catch (error) {
+      if (error.type) throw error
+      throw createDatabaseError('Ошибка создания временной ссылки', 'temp_download_links', error)
+    }
+  }
+
+  // Скачивание файла по временной ссылке
+  async downloadFileByTempLink(token, req) {
+    try {
+      // Находим активную временную ссылку
+      const linkResult = await query(
+        `SELECT tdl.*, f.original_name, f.file_name, f.mime_type, f.file_size, f.status
+         FROM temp_download_links tdl
+         JOIN files f ON tdl.file_id = f.id
+         WHERE tdl.token = $1 
+         AND tdl.expires_at > NOW()
+         AND tdl.is_used = FALSE
+         AND f.status IN ($2, $3)
+         AND f.deleted_at IS NULL`,
+        [token, FILE_STATUSES.ACTIVE, FILE_STATUSES.UPLOADING],
+      )
+
+      if (linkResult.rows.length === 0) {
+        throw createNotFoundError('Временная ссылка', token)
+      }
+
+      const link = linkResult.rows[0]
+
+      // Помечаем ссылку как использованную
+      await query(
+        `UPDATE temp_download_links 
+         SET is_used = TRUE, used_at = NOW(), used_ip = $1
+         WHERE id = $2`,
+        [this.getClientIP(req), link.id],
+      )
+
+      // Получаем stream файла из MinIO
+      const fileStream = await getFileStream(link.file_name)
+
+      // Обновляем счетчик скачиваний файла
+      await query(`UPDATE files SET download_count = download_count + 1 WHERE id = $1`, [
+        link.file_id,
+      ])
+
+      console.log(`📥 Скачивание файла по временной ссылке: ${link.original_name}`)
+
+      return {
+        stream: fileStream,
+        fileName: link.original_name,
+        mimeType: link.mime_type,
+        fileSize: link.file_size,
+      }
+    } catch (error) {
+      if (error.type) throw error
+      throw createDatabaseError(
+        'Ошибка скачивания файла по временной ссылке',
+        'temp_download_links',
+        error,
+      )
+    }
+  }
+
+  // Очистка истекших временных ссылок
+  async cleanupExpiredTempLinks() {
+    try {
+      const result = await query(
+        `DELETE FROM temp_download_links 
+         WHERE expires_at < NOW() OR is_used = TRUE`,
+      )
+
+      console.log(`🧹 Очищено ${result.rowCount} истекших временных ссылок`)
+      return result.rowCount
+    } catch (error) {
+      console.error('🚨 Ошибка очистки истекших временных ссылок:', error.message)
+      throw error
+    }
+  }
+
+  // Получение статистики временных ссылок пользователя
+  async getTempLinksStats(userId, userRole) {
+    try {
+      let whereClause = 'WHERE tdl.created_by = $1'
+      const params = [userId]
+
+      // Админы могут видеть все ссылки
+      if (['admin', 'super_admin'].includes(userRole)) {
+        whereClause = ''
+        params.length = 0
+      }
+
+      const result = await query(
+        `SELECT 
+          tdl.id, tdl.token, tdl.expires_at, tdl.is_used, tdl.used_at, tdl.created_at,
+          f.original_name, f.file_name, f.file_type
+         FROM temp_download_links tdl
+         JOIN files f ON tdl.file_id = f.id
+         ${whereClause}
+         ORDER BY tdl.created_at DESC`,
+        params,
+      )
+
+      return result.rows.map((row) => ({
+        id: row.id,
+        token: row.token,
+        expiresAt: row.expires_at,
+        isUsed: row.is_used,
+        usedAt: row.used_at,
+        createdAt: row.created_at,
+        fileName: row.original_name,
+        fileType: row.file_type,
+        isExpired: new Date(row.expires_at) < new Date(),
+      }))
+    } catch (error) {
+      if (error.type) throw error
+      throw createDatabaseError(
+        'Ошибка получения статистики временных ссылок',
+        'temp_download_links',
+        error,
+      )
+    }
+  }
+
+  // === ВСПОМОГАТЕЛЬНЫЕ МЕТОДЫ ===
+
+  // Генерация безопасного токена
+  generateSecureToken() {
+    return crypto.randomBytes(32).toString('hex')
+  }
+
+  // Получение IP адреса клиента
+  getClientIP(req) {
+    // IP адрес должен передаваться из middleware
+    return req?.clientIP || '127.0.0.1'
   }
 }
 

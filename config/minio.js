@@ -1,16 +1,16 @@
 const Minio = require('minio')
-require('dotenv').config({ path: './config.env' })
+require('dotenv').config({ path: './.env' })
 
 // Создание MinIO клиента
 const minioClient = new Minio.Client({
-  endPoint: process.env.MINIO_ENDPOINT || '192.168.13.19',
-  port: parseInt(process.env.MINIO_PORT) || 9000,
+  endPoint: process.env.MINIO_ENDPOINT,
+  port: parseInt(process.env.MINIO_PORT),
   useSSL: process.env.MINIO_USE_SSL === 'true',
-  accessKey: process.env.MINIO_ACCESS_KEY || 'minioadmin',
-  secretKey: process.env.MINIO_SECRET_KEY || 'minioadmin',
+  accessKey: process.env.MINIO_ACCESS_KEY,
+  secretKey: process.env.MINIO_SECRET_KEY,
 })
 
-const BUCKET_NAME = process.env.MINIO_BUCKET_NAME || 'gubkin-dormitory'
+const BUCKET_NAME = process.env.MINIO_BUCKET_NAME
 
 // Функция для инициализации bucket
 const initializeBucket = async () => {
