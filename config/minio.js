@@ -103,7 +103,7 @@ const uploadFile = async (fileBuffer, fileName, contentType, metadata = {}) => {
   }
 }
 
-// Функция для получения URL файла
+// Функция для получения URL файла (presigned URL)
 const getFileUrl = (fileName, expirySeconds = 24 * 60 * 60) => {
   try {
     return minioClient.presignedGetObject(BUCKET_NAME, fileName, expirySeconds)
@@ -113,15 +113,29 @@ const getFileUrl = (fileName, expirySeconds = 24 * 60 * 60) => {
   }
 }
 
-// Функция для получения публичного URL файла
+// Функция для получения публичного URL файла (HTTPS)
 const getPublicFileUrl = (fileName) => {
-  const protocol = process.env.MINIO_USE_SSL === 'true' ? 'https' : 'http'
-  const port =
-    process.env.MINIO_PORT !== '80' && process.env.MINIO_PORT !== '443'
-      ? `:${process.env.MINIO_PORT}`
+  const protocol = process.env.MINIO_PUBLIC_USE_SSL === 'true' ? 'https' : 'http'
+  const endpoint = process.env.MINIO_PUBLIC_ENDPOINT || process.env.MINIO_ENDPOINT
+  const port = process.env.MINIO_PUBLIC_PORT || process.env.MINIO_PORT
+
+  // Добавляем порт только если он не стандартный
+  const portSuffix =
+    (protocol === 'https' && port !== '443') || (protocol === 'http' && port !== '80')
+      ? `:${port}`
       : ''
 
-  return `${protocol}://${process.env.MINIO_ENDPOINT}${port}/${BUCKET_NAME}/${fileName}`
+  return `${protocol}://${endpoint}${portSuffix}/${BUCKET_NAME}/${fileName}`
+}
+
+// Функция для получения URL через прокси API (рекомендуется для HTTPS)
+const getProxyFileUrl = (fileName) => {
+  const apiEndpoint =
+    process.env.FRONTEND_URL?.replace(
+      'https://dormitory.gubkin.uz',
+      'https://api.dormitory.gubkin.uz',
+    ) || 'https://api.dormitory.gubkin.uz'
+  return `${apiEndpoint}/api/files/proxy/${encodeURIComponent(fileName)}`
 }
 
 // Функция для удаления файла
@@ -178,6 +192,20 @@ const getFileStream = async (fileName) => {
   }
 }
 
+// Функция для получения URL в зависимости от настроек
+const getFileUrlByMode = (fileName, expirySeconds = 24 * 60 * 60) => {
+  const serveMode = process.env.FILE_SERVE_MODE || 'proxy'
+  const proxyEnabled = process.env.FILE_PROXY_ENABLED === 'true'
+
+  if (serveMode === 'proxy' && proxyEnabled) {
+    return getProxyFileUrl(fileName)
+  } else if (serveMode === 'presigned') {
+    return getFileUrl(fileName, expirySeconds)
+  } else {
+    return getPublicFileUrl(fileName)
+  }
+}
+
 module.exports = {
   minioClient,
   BUCKET_NAME,
@@ -186,6 +214,8 @@ module.exports = {
   uploadFile,
   getFileUrl,
   getPublicFileUrl,
+  getProxyFileUrl,
+  getFileUrlByMode,
   deleteFile,
   fileExists,
   getFileMetadata,

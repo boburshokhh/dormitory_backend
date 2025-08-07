@@ -10,7 +10,6 @@ const {
   validateFileVerification,
   validateCleanupParams,
   validateUUID,
-  validateFileDownload,
 } = require('../validators/fileValidator')
 const {
   validateTempLinkCreation,
@@ -109,37 +108,20 @@ class FilesController {
     }
   }
 
-  // GET /api/files/:id - Получить конкретный файл
+  // GET /api/files/:id - Получить информацию о файле
   async getFileById(req, res) {
     const context = { function: 'getFileById', actionType: 'file_view' }
 
     try {
       const fileId = validateUUID(req.params.id, 'ID файла')
-      const { download } = validateFileDownload(req.query)
 
-      if (download) {
-        // Скачивание файла как stream
-        const fileData = await filesService.downloadFileStream(fileId, req.user.id, req.user.role)
+      // Получаем метаданные файла
+      const file = await filesService.getFileById(fileId, req.user.id, req.user.role, false)
 
-        // Устанавливаем заголовки для скачивания
-        res.setHeader('Content-Type', fileData.mimeType)
-        res.setHeader(
-          'Content-Disposition',
-          `attachment; filename="${encodeURIComponent(fileData.fileName)}"`,
-        )
-        res.setHeader('Content-Length', fileData.fileSize)
-
-        // Отправляем файл как stream
-        fileData.stream.pipe(res)
-      } else {
-        // Получаем только метаданные файла
-        const file = await filesService.getFileById(fileId, req.user.id, req.user.role, false)
-
-        res.json({
-          success: true,
-          data: file,
-        })
-      }
+      res.json({
+        success: true,
+        data: file,
+      })
     } catch (error) {
       await handleApplicationError(error, req, res, context)
     }
@@ -318,34 +300,6 @@ class FilesController {
     }
   }
 
-  // GET /api/files/:id/download - Прямое скачивание файла через бэкенд (прокси)
-  async downloadFileProxy(req, res) {
-    const context = { function: 'downloadFileProxy', actionType: 'file_download_proxy' }
-
-    try {
-      const fileId = validateUUID(req.params.id, 'ID файла')
-
-      // Получаем файл для скачивания через сервис
-      const fileData = await filesService.downloadFileStream(fileId, req.user.id, req.user.role)
-
-      // Устанавливаем заголовки для скачивания
-      res.setHeader('Content-Type', fileData.mimeType)
-      res.setHeader(
-        'Content-Disposition',
-        `attachment; filename="${encodeURIComponent(fileData.fileName)}"`,
-      )
-      res.setHeader('Content-Length', fileData.fileSize)
-      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate')
-      res.setHeader('Pragma', 'no-cache')
-      res.setHeader('Expires', '0')
-
-      // Отправляем файл как stream
-      fileData.stream.pipe(res)
-    } catch (error) {
-      await handleApplicationError(error, req, res, context)
-    }
-  }
-
   // GET /api/files/download/temp/:token - Скачивание файла по временной ссылке (без аутентификации)
   async downloadFileByTempLink(req, res) {
     const context = { function: 'downloadFileByTempLink', actionType: 'file_download_temp_link' }
@@ -414,6 +368,23 @@ class FilesController {
         data: {
           deletedCount,
         },
+      })
+    } catch (error) {
+      await handleApplicationError(error, req, res, context)
+    }
+  }
+
+  // DELETE /api/files/temp-links/:id - Удаление временной ссылки
+  async deleteTempLink(req, res) {
+    const context = { function: 'deleteTempLink', actionType: 'temp_link_delete' }
+
+    try {
+      // Удаляем временную ссылку через сервис
+      await filesService.deleteTempLink(req.params.id, req.user.id)
+
+      res.json({
+        success: true,
+        message: 'Временная ссылка удалена',
       })
     } catch (error) {
       await handleApplicationError(error, req, res, context)

@@ -118,8 +118,10 @@ router.get('/', requireAdmin, async (req, res) => {
       SELECT 
         u.id, u.contact, u.first_name, u.last_name, u.middle_name, u.phone,
         u.role, u.student_id, u.group_name, u.course, u.is_active,
-        u.is_verified, u.created_at, u.updated_at, u.region, u.address,
-        u.birth_date, u.gender, u.parent_phone, u.email, u.photo_3x4_url,
+              u.is_verified, u.created_at, u.updated_at, u.region, u.address,
+      u.birth_date, u.gender, u.parent_phone, u.email,
+      -- Файлы пользователя (для генерации аватара на фронтенде)
+      f.file_name as avatar_file_name,
         -- Информация о проживании
         b.id as bed_id, b.bed_number, b.assigned_at,
         r.id as room_id, r.room_number, r.block_room_number,
@@ -130,6 +132,7 @@ router.get('/', requireAdmin, async (req, res) => {
         -- Информация о группе
         g.id as group_id_ref, g.faculty, g.speciality
       FROM users u
+      LEFT JOIN files f ON u.avatar_file_id = f.id AND f.status = 'active' AND f.deleted_at IS NULL
       LEFT JOIN beds b ON u.id = b.student_id AND b.is_active = true
       LEFT JOIN rooms r ON b.room_id = r.id AND r.is_active = true
       LEFT JOIN floors f1 ON r.floor_id = f1.id AND f1.is_active = true
@@ -149,6 +152,7 @@ router.get('/', requireAdmin, async (req, res) => {
       `
       SELECT COUNT(DISTINCT u.id) as total 
       FROM users u
+      LEFT JOIN files f ON u.avatar_file_id = f.id AND f.status = 'active' AND f.deleted_at IS NULL
       LEFT JOIN beds b ON u.id = b.student_id AND b.is_active = true
       LEFT JOIN rooms r ON b.room_id = r.id AND r.is_active = true
       LEFT JOIN floors f1 ON r.floor_id = f1.id AND f1.is_active = true
@@ -181,7 +185,7 @@ router.get('/', requireAdmin, async (req, res) => {
       birthDate: user.birth_date,
       gender: user.gender,
       parentPhone: user.parent_phone,
-      photo3x4Url: user.photo_3x4_url,
+      avatarFileName: user.avatar_file_name,
       createdAt: user.created_at,
       updatedAt: user.updated_at,
 
@@ -223,6 +227,31 @@ router.get('/', requireAdmin, async (req, res) => {
           }
         : null,
     }))
+
+    // Отладочная информация для аватаров
+    if (process.env.NODE_ENV === 'development') {
+      const usersWithAvatars = users.filter((u) => u.avatarFileName)
+      const usersWithoutAvatars = users.filter((u) => !u.avatarFileName)
+      console.log('👤 Users API: Статистика аватаров:', {
+        total: users.length,
+        withAvatars: usersWithAvatars.length,
+        withoutAvatars: usersWithoutAvatars.length,
+        sampleWithAvatar: usersWithAvatars[0]
+          ? {
+              id: usersWithAvatars[0].id,
+              fullName: usersWithAvatars[0].fullName,
+              avatarFileName: usersWithAvatars[0].avatarFileName,
+            }
+          : null,
+        sampleWithoutAvatar: usersWithoutAvatars[0]
+          ? {
+              id: usersWithoutAvatars[0].id,
+              fullName: usersWithoutAvatars[0].fullName,
+              avatarFileName: usersWithoutAvatars[0].avatarFileName,
+            }
+          : null,
+      })
+    }
 
     res.json({
       users,
@@ -431,11 +460,15 @@ router.get('/:id', validateUUID('id'), requireAdmin, async (req, res) => {
     const result = await query(
       `
       SELECT 
-        id, email, first_name, last_name, middle_name, phone,
-        role, student_id, group_name, course, is_active,
-        email_verified, created_at, updated_at
-      FROM users
-      WHERE id = $1
+        u.id, u.email, u.first_name, u.last_name, u.middle_name, u.phone,
+        u.role, u.student_id, u.group_name, u.course, u.is_active,
+        u.email_verified, u.created_at, u.updated_at,
+        u.contact, u.contact_type, u.birth_date, u.gender, u.region, u.address,
+        u.parent_phone, u.avatar_file_id,
+        f.file_name as avatar_file_name
+      FROM users u
+      LEFT JOIN files f ON u.avatar_file_id = f.id AND f.status = 'active' AND f.deleted_at IS NULL
+      WHERE u.id = $1
     `,
       [id],
     )
@@ -461,6 +494,15 @@ router.get('/:id', validateUUID('id'), requireAdmin, async (req, res) => {
       emailVerified: user.email_verified,
       createdAt: user.created_at,
       updatedAt: user.updated_at,
+      contact: user.contact,
+      contactType: user.contact_type,
+      birthDate: user.birth_date,
+      gender: user.gender,
+      region: user.region,
+      address: user.address,
+      parentPhone: user.parent_phone,
+      avatarFileId: user.avatar_file_id,
+      avatarFileName: user.avatar_file_name,
     })
   } catch (error) {
     console.error('Ошибка получения пользователя:', error)

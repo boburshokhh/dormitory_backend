@@ -11,19 +11,22 @@ const getClientIP = (req) => {
   const clientIP = req.headers['x-client-ip']
   const clusterClientIP = req.headers['x-cluster-client-ip']
 
-  // Если есть X-Forwarded-For, берем первый IP (клиентский)
-  if (forwardedFor) {
+  // Если есть X-Forwarded-For и мы доверяем прокси
+  if (forwardedFor && req.app.get('trust proxy')) {
     const ips = forwardedFor.split(',').map((ip) => ip.trim())
+    // Возвращаем первый IP (оригинальный IP клиента)
     return ips[0]
   }
 
-  // Проверяем другие заголовки
-  if (realIP) return realIP
-  if (forwarded) return forwarded
-  if (clientIP) return clientIP
-  if (clusterClientIP) return clusterClientIP
+  // Проверяем другие заголовки только если доверяем прокси
+  if (req.app.get('trust proxy')) {
+    if (realIP) return realIP
+    if (forwarded) return forwarded
+    if (clientIP) return clientIP
+    if (clusterClientIP) return clusterClientIP
+  }
 
-  // Если нет специальных заголовков, используем стандартный IP
+  // Если нет специальных заголовков или не доверяем прокси, используем стандартный IP
   return req.connection?.remoteAddress || req.socket?.remoteAddress || req.ip || '127.0.0.1'
 }
 

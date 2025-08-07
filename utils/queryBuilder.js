@@ -158,6 +158,19 @@ const QUERIES = {
       AND is_active = true
   `,
 
+  // Подробная проверка студента с полями профиля
+  GET_STUDENT_INFO_DETAILED: `
+    SELECT 
+      course, gender, is_profile_filled,
+      first_name, last_name, middle_name, birth_date,
+      region, address, phone, parent_phone,
+      passport_series, passport_pinfl, group_id
+    FROM users 
+    WHERE id = $1 
+      AND role = 'student' 
+      AND is_active = true
+  `,
+
   // Проверка общежития
   CHECK_DORMITORY: `
     SELECT id, type, is_active 

@@ -1,16 +1,16 @@
 const { Pool } = require('pg')
-require('dotenv').config({ path: './config.env' })
+require('dotenv').config({ path: './.env' })
 
 // Создание пула подключений
 const pool = new Pool({
   user: process.env.DB_USER || 'postgres',
-  host: process.env.DB_HOST || '192.168.13.19',
+  host: process.env.DB_HOST || '192.168.1.253',
   database: process.env.DB_NAME || 'gubkin_dormitory',
   password: process.env.DB_PASSWORD || '1234bobur$',
   port: process.env.DB_PORT || 5432,
   max: 20, // максимум соединений в пуле
   idleTimeoutMillis: 30000, // время ожидания закрытия неактивного соединения
-  connectionTimeoutMillis: 2000, // время ожидания подключения
+  connectionTimeoutMillis: 5000, // увеличиваем время ожидания подключения
   ssl: false,
 })
 
@@ -73,7 +73,7 @@ const checkConnection = async () => {
     return true
   } catch (error) {
     console.error('❌ Ошибка подключения к PostgreSQL:', error.message)
-    console.error('🔧 Проверьте настройки в config.env')
+    console.error('🔧 Проверьте настройки в .env')
     return false
   }
 }

@@ -1,5 +1,5 @@
 const { query, transaction } = require('../config/database')
-const { getFileUrl } = require('../config/minio')
+const { getFileUrl } = require('../config/fileStorage')
 const { DORMITORY_TYPES } = require('../constants/applicationConstants')
 const {
   buildApplicationFilters,
@@ -313,22 +313,60 @@ class ApplicationsService {
   }
 
   async getStudentInfo(client, studentId) {
-    const userResult = await client.query(QUERIES.GET_STUDENT_INFO, [studentId])
+    const userResult = await client.query(QUERIES.GET_STUDENT_INFO_DETAILED, [studentId])
 
     if (userResult.rows.length === 0) {
       throw createNotFoundError('Студент не найден или неактивен')
     }
 
-    const { course, gender, is_profile_filled } = userResult.rows[0]
+    const user = userResult.rows[0]
+    const { course, gender, is_profile_filled } = user
 
-    if (!is_profile_filled) {
+    // Проверяем, заполнен ли профиль автоматически
+    const isProfileActuallyFilled = this.checkProfileCompleteness(user)
+
+    // Если профиль заполнен, но флаг не установлен, обновляем его
+    if (isProfileActuallyFilled && !is_profile_filled) {
+      await client.query(
+        'UPDATE users SET is_profile_filled = true, updated_at = NOW() WHERE id = $1',
+        [studentId],
+      )
+      console.log(`✅ Профиль пользователя ${studentId} автоматически помечен как заполненный`)
+    }
+
+    // Проверяем заполненность профиля
+    if (!isProfileActuallyFilled) {
       throw createBusinessLogicError(
-        'Необходимо заполнить профиль перед подачей заявки',
+        'Необходимо заполнить профиль перед подачей заявки. Заполните все обязательные поля: имя, фамилия, отчество, дата рождения, пол, регион, адрес, телефон, телефон родителя, серия паспорта, ПИНФЛ, курс, группа.',
         'PROFILE_NOT_FILLED',
       )
     }
 
-    return { course, gender, isProfileFilled: is_profile_filled }
+    return { course, gender, isProfileFilled: true }
+  }
+
+  // Проверка заполненности профиля
+  checkProfileCompleteness(user) {
+    const requiredFields = [
+      'first_name',
+      'last_name',
+      'middle_name',
+      'birth_date',
+      'gender',
+      'region',
+      'address',
+      'phone',
+      'parent_phone',
+      'passport_series',
+      'passport_pinfl',
+      'course',
+      'group_id',
+    ]
+
+    return requiredFields.every((field) => {
+      const value = user[field]
+      return value !== null && value !== undefined && value !== ''
+    })
   }
 
   async validateDormitoryForStudent(client, dormitoryId, studentInfo, academicYear, semester) {

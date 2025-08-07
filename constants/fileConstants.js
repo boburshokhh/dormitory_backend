@@ -14,6 +14,7 @@ const FILE_TYPES = {
   AVATAR: 'avatar',
   CERTIFICATE: 'certificate',
   IMAGE: 'image',
+  SOCIAL_PROTECTION: 'social_protection', // Новый тип для документов социальной защиты
 }
 
 const ALLOWED_MIME_TYPES = [
@@ -90,6 +91,7 @@ const getFileTypeByFieldName = (originalName, fieldName) => {
   if (fieldName === 'passport_file' || fieldName === 'passport') return FILE_TYPES.PASSPORT
   if (fieldName === 'photo_3x4' || fieldName === 'photo') return FILE_TYPES.PHOTO_3X4
   if (fieldName === 'avatar') return FILE_TYPES.AVATAR
+  if (fieldName === 'social_protection_file' || fieldName === 'social_protection') return FILE_TYPES.SOCIAL_PROTECTION
 
   return getFileTypeByExtension(originalName)
 }

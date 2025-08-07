@@ -20,7 +20,7 @@ router.get('/', async (req, res) => {
         u.passport_series, u.passport_pinfl,
         u.course, u.group_id, u.student_id, u.is_profile_filled, u.role,
         u.created_at, u.updated_at, u.avatar_file_id,
-        f.file_name as avatar_file_name, f.public_url as avatar_url
+        f.file_name as avatar_file_name
       FROM users u
       LEFT JOIN files f ON u.avatar_file_id = f.id AND f.status = 'active' AND f.deleted_at IS NULL
       WHERE u.id = $1

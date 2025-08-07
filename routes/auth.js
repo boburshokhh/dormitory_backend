@@ -338,9 +338,11 @@ router.post('/login', async (req, res) => {
 router.get('/me', authenticateToken, async (req, res) => {
   try {
     const userResult = await query(
-      `SELECT id, username, contact, contact_type, role, is_verified, created_at, updated_at
-       FROM users 
-       WHERE id = $1`,
+      `SELECT u.id, u.username, u.contact, u.contact_type, u.role, u.is_verified, u.created_at, u.updated_at,
+              f.file_name as avatar_file_name
+       FROM users u
+       LEFT JOIN files f ON u.avatar_file_id = f.id AND f.status = 'active' AND f.deleted_at IS NULL
+       WHERE u.id = $1`,
       [req.user.id],
     )
 
@@ -359,6 +361,7 @@ router.get('/me', authenticateToken, async (req, res) => {
       isVerified: user.is_verified,
       createdAt: user.created_at,
       updatedAt: user.updated_at,
+      avatarFileName: user.avatar_file_name,
     })
   } catch (error) {
     console.error('Ошибка получения пользователя:', error)
