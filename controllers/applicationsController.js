@@ -1,6 +1,5 @@
 const { query, transaction } = require('../config/database')
 const applicationsService = require('../services/applicationsService')
-const telegramLogger = require('../services/telegramLoggerService')
 const {
   handleApplicationError,
   createNotFoundError,
@@ -169,15 +168,6 @@ class ApplicationsController {
       // Создаем заявку через сервис
       const result = await applicationsService.createApplication(req.user.id, validatedData)
 
-      // Логируем создание заявки в Telegram
-      await telegramLogger.logUserAction('Подача заявки на общежитие', req.user.id, {
-        applicationId: result.id,
-        dormitoryId: validatedData.dormitory_id,
-        academicYear: validatedData.academic_year,
-        semester: validatedData.semester,
-        ip: req.ip,
-      })
-
       res.status(201).json({
         success: true,
         message: 'Заявка успешно подана',
@@ -232,19 +222,6 @@ class ApplicationsController {
         applicationId,
         req.user.id,
         validatedData,
-      )
-
-      // Логируем рассмотрение заявки в Telegram
-      await telegramLogger.logUserAction(
-        `Рассмотрение заявки: ${validatedData.status === 'approved' ? 'одобрена' : 'отклонена'}`,
-        req.user.id,
-        {
-          applicationId: applicationId,
-          status: validatedData.status,
-          adminId: req.user.id,
-          adminRole: req.user.role,
-          ip: req.ip,
-        },
       )
 
       res.json({

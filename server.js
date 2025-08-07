@@ -13,20 +13,6 @@ const { initializeBucket } = require('./config/minio')
 const { requestLogger, errorLogger } = require('./middleware/logging')
 const { clientIPMiddleware } = require('./middleware/clientIP')
 
-// Безопасная загрузка Telegram middleware
-let telegramMiddleware = null
-let terminalTelegramMiddleware = null
-
-if (process.env.TELEGRAM_LOGGING_ENABLED === 'true') {
-  try {
-    telegramMiddleware = require('./middleware/telegramLogging')
-    terminalTelegramMiddleware = require('./middleware/terminalTelegramLogging')
-    console.log('✅ Telegram logging enabled')
-  } catch (error) {
-    console.log('⚠️ Telegram logging disabled:', error.message)
-  }
-}
-
 // Route imports
 const welcomeRoutes = require('./routes/welcome')
 const authRoutes = require('./routes/auth')
@@ -196,16 +182,6 @@ if (fs.existsSync(uploadsPath)) {
 // Custom middleware
 app.use(clientIPMiddleware)
 
-// Telegram logging middleware (безопасное подключение)
-if (process.env.TELEGRAM_LOGGING_ENABLED === 'true') {
-  if (process.env.TELEGRAM_TERMINAL_MODE === 'true' && terminalTelegramMiddleware) {
-    app.use(terminalTelegramMiddleware.terminalTelegramRequestLogger)
-  } else if (telegramMiddleware) {
-    app.use(telegramMiddleware.telegramSecurityLogger)
-    app.use(telegramMiddleware.telegramRequestLogger)
-  }
-}
-
 // Стандартное логирование
 app.use(requestLogger)
 
@@ -258,13 +234,6 @@ app.use('*', (req, res) => {
 })
 
 // Error handling middleware (must be last)
-if (process.env.TELEGRAM_LOGGING_ENABLED === 'true') {
-  if (process.env.TELEGRAM_TERMINAL_MODE === 'true' && terminalTelegramMiddleware) {
-    app.use(terminalTelegramMiddleware.terminalTelegramErrorLogger)
-  } else if (telegramMiddleware) {
-    app.use(telegramMiddleware.telegramErrorLogger)
-  }
-}
 app.use(errorLogger)
 app.use((error, req, res, next) => {
   console.error('Server error:', error)
@@ -328,11 +297,6 @@ async function gracefulShutdown(signal) {
   }, 30000) // 30 seconds timeout
 
   try {
-    // Flush Telegram logs before shutdown
-    if (telegramMiddleware && telegramMiddleware.telegramLogger) {
-      await telegramMiddleware.telegramLogger.forceFlush()
-    }
-
     // Close HTTP server
     if (global.httpServer) {
       await new Promise((resolve) => {

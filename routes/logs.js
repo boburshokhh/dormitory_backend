@@ -3,19 +3,8 @@ const router = express.Router()
 const logsController = require('../controllers/logsController')
 const auth = require('../middleware/auth')
 
-// Безопасное подключение Telegram middleware
-let adminActionLogger = (req, res, next) => next() // По умолчанию пустой middleware
-
-try {
-  const { telegramUserActionLogger } = require('../middleware/telegramLogging')
-  adminActionLogger = telegramUserActionLogger('admin_logs_action')
-} catch (error) {
-  console.log('⚠️ Telegram middleware not available for logs routes')
-}
-
 // Все маршруты требуют аутентификации и роли администратора
 router.use(auth)
-router.use(adminActionLogger)
 
 // Получение статистики логирования
 router.get('/stats', async (req, res) => {
@@ -26,26 +15,6 @@ router.get('/stats', async (req, res) => {
 router.get('/files/:filename', async (req, res) => {
   req.query.filename = req.params.filename
   await logsController.getLogFile(req, res)
-})
-
-// Очистка буфера Telegram логов
-router.post('/telegram/flush', async (req, res) => {
-  await logsController.flushTelegramBuffer(req, res)
-})
-
-// Изменение уровня логирования
-router.put('/telegram/level', async (req, res) => {
-  await logsController.updateLogLevel(req, res)
-})
-
-// Включение/выключение Telegram логирования
-router.put('/telegram/toggle', async (req, res) => {
-  await logsController.toggleTelegramLogging(req, res)
-})
-
-// Отправка тестового сообщения в Telegram
-router.post('/telegram/test', async (req, res) => {
-  await logsController.sendTestMessage(req, res)
 })
 
 // Получение системной информации
@@ -180,7 +149,6 @@ router.get('/realtime/stats', (req, res) => {
     const stats = {
       type: 'stats',
       data: {
-        telegram: require('../services/telegramLoggerService').getStats(),
         system: {
           uptime: process.uptime(),
           memory: process.memoryUsage(),
