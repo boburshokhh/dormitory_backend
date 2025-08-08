@@ -516,6 +516,12 @@ router.post(
         ? req.body.existing_photo_file_id[0]
         : req.body.existing_photo_file_id
 
+      const existingSocialProtectionFileId = Array.isArray(
+        req.body.existing_social_protection_file_id,
+      )
+        ? req.body.existing_social_protection_file_id[0]
+        : req.body.existing_social_protection_file_id
+
       // Валидация файлов (новые + существующие)
       const fileTypes = Array.isArray(req.body.fileTypes)
         ? req.body.fileTypes
@@ -523,8 +529,10 @@ router.post(
 
       const hasNewPassport = fileTypes.includes('passport')
       const hasNewPhoto = fileTypes.includes('photo_3x4')
+      const hasNewSocialProtection = fileTypes.includes('social_protection')
       const hasExistingPassport = !!existingPassportFileId
       const hasExistingPhoto = !!existingPhotoFileId
+      const hasExistingSocialProtection = !!existingSocialProtectionFileId
 
       // Проверяем наличие паспорта (новый или существующий)
       if (!hasNewPassport && !hasExistingPassport) {
@@ -537,6 +545,15 @@ router.post(
       if (!hasNewPhoto && !hasExistingPhoto) {
         return res.status(400).json({
           error: 'Необходимо загрузить фото 3x4',
+        })
+      }
+
+      // Если пользователь указал наличие социальной защиты, требуем файл
+      const hasSocialProtectionFlag =
+        req.body.hasSocialProtection === 'true' || req.body.hasSocialProtection === true
+      if (hasSocialProtectionFlag && !hasNewSocialProtection && !hasExistingSocialProtection) {
+        return res.status(400).json({
+          error: 'Необходимо загрузить документ социальной защиты',
         })
       }
 
@@ -695,6 +712,15 @@ router.post(
           allFileIds.push(existingPhotoFileId)
         }
 
+        // Добавляем существующий документ социальной защиты (если есть)
+        if (
+          existingSocialProtectionFileId &&
+          String(existingSocialProtectionFileId).trim() &&
+          !allFileIds.includes(existingSocialProtectionFileId)
+        ) {
+          allFileIds.push(existingSocialProtectionFileId)
+        }
+
         // 3. Активируем все файлы (новые и существующие)
         if (allFileIds.length > 0) {
           // Убираем дубликаты из массива и фильтруем пустые значения
@@ -705,6 +731,7 @@ router.post(
             uniqueFileIds,
             existingPassportFileId,
             existingPhotoFileId,
+            existingSocialProtectionFileId,
             newFilesCount: uploadResults.length,
           })
 

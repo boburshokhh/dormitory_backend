@@ -74,34 +74,11 @@ const validateListParams = (query) => {
 // Валидация данных при создании заявки
 const validateCreateApplication = (body) => {
   const errors = []
-  const { dormitoryId, preferredRoomType, academicYear, semester, documents, notes } = body
+  const { dormitoryId, documents, notes } = body
 
   // Обязательные поля
-  if (!academicYear || typeof academicYear !== 'string' || academicYear.trim().length === 0) {
-    errors.push('Учебный год обязателен и должен быть непустой строкой')
-  } else if (academicYear.trim().length < 9) {
-    errors.push('Учебный год должен быть в формате "2024-2025"')
-  }
-
-  if (!semester) {
-    errors.push('Семестр обязателен')
-  } else if (!VALID_SEMESTERS.includes(semester)) {
-    errors.push(
-      `Недопустимый семестр: ${semester}. Допустимые значения: ${VALID_SEMESTERS.join(', ')}`,
-    )
-  }
-
-  // Необязательные поля с валидацией
-  if (dormitoryId !== undefined && dormitoryId !== null) {
-    if (typeof dormitoryId !== 'string' || dormitoryId.trim().length === 0) {
-      errors.push('ID общежития должен быть непустой строкой')
-    }
-  }
-
-  if (preferredRoomType && !VALID_ROOM_TYPES.includes(preferredRoomType)) {
-    errors.push(
-      `Недопустимый тип комнаты: ${preferredRoomType}. Допустимые значения: ${VALID_ROOM_TYPES.join(', ')}`,
-    )
+  if (!dormitoryId || typeof dormitoryId !== 'string' || dormitoryId.trim().length === 0) {
+    errors.push('ID общежития обязателен и должен быть непустой строкой')
   }
 
   if (documents !== undefined) {
@@ -133,10 +110,7 @@ const validateCreateApplication = (body) => {
   }
 
   return {
-    dormitoryId: dormitoryId || null,
-    preferredRoomType: preferredRoomType || null,
-    academicYear: academicYear.trim(),
-    semester,
+    dormitoryId: dormitoryId.trim(),
     documents: documents || [],
     notes: notes || null,
   }

@@ -73,11 +73,14 @@ router.get('/available', async (req, res) => {
     // Определяем доступные типы общежитий
     let availableTypes = []
 
-    if (course === 1 && gender === 'female') {
-      // Студенты 1 курса (девочки) могут выбрать только ДПС 1
+    if (gender === 'female') {
+      // Все девочки (независимо от курса) - только ДПС 1
       availableTypes = ['type_1']
-    } else if (course >= 2 && course <= 5) {
-      // Студенты 2-5 курса могут выбрать только ДПС 2
+    } else if (gender === 'male' && course === 1) {
+      // Парни 1-го курса - только ДПС 1
+      availableTypes = ['type_1']
+    } else if (gender === 'male' && course >= 2 && course <= 5) {
+      // Парни 2-5 курса - только ДПС 2
       availableTypes = ['type_2']
     }
 

@@ -76,9 +76,9 @@ router.post('/register-request', async (req, res) => {
 
     // Сохраняем код в БД
     await query(
-      `INSERT INTO verification_codes (contact, contact_type, code_hash, expires_at, ip_address) 
-       VALUES ($1, $2, $3, $4, $5)
-       ON CONFLICT (contact) 
+      `INSERT INTO verification_codes (contact, contact_type, code_hash, expires_at, ip_address, type) 
+       VALUES ($1, $2, $3, $4, $5, 'registration')
+       ON CONFLICT (contact, type) 
        DO UPDATE SET 
          code_hash = EXCLUDED.code_hash, 
          expires_at = EXCLUDED.expires_at, 
@@ -135,7 +135,7 @@ router.post('/register-verify', async (req, res) => {
       const codeResult = await client.query(
         `SELECT code_hash, contact_type, attempts, expires_at 
          FROM verification_codes 
-         WHERE contact = $1 AND expires_at > CURRENT_TIMESTAMP`,
+         WHERE contact = $1 AND type = 'registration' AND expires_at > CURRENT_TIMESTAMP`,
         [contact],
       )
 
@@ -156,8 +156,8 @@ router.post('/register-verify', async (req, res) => {
       if (!isValidCode) {
         // Увеличиваем счетчик попыток
         await client.query(
-          'UPDATE verification_codes SET attempts = attempts + 1 WHERE contact = $1',
-          [contact],
+          'UPDATE verification_codes SET attempts = attempts + 1 WHERE contact = $1 AND type = $2',
+          [contact, 'registration'],
         )
         throw new Error('Неверный код')
       }
@@ -186,7 +186,10 @@ router.post('/register-verify', async (req, res) => {
       const user = userResult.rows[0]
 
       // Удаляем использованный код
-      await client.query('DELETE FROM verification_codes WHERE contact = $1', [contact])
+      await client.query('DELETE FROM verification_codes WHERE contact = $1 AND type = $2', [
+        contact,
+        'registration',
+      ])
 
       // Логируем успешную регистрацию
       // await loggingService.logUserActivity({
@@ -226,23 +229,23 @@ router.post('/register-verify', async (req, res) => {
   }
 })
 
-// 3. ВХОД: Обычная аутентификация по логину и паролю
+// 3. ВХОД: Обычная аутентификация по логину/email и паролю
 router.post('/login', async (req, res) => {
   try {
     const { username, password } = req.body
 
     if (!username || !password) {
-      return res.status(400).json({ error: 'Логин и пароль обязательны' })
+      return res.status(400).json({ error: 'Логин/email и пароль обязательны' })
     }
 
     // Упрощенная проверка rate limiting для логина - только базовая защита
     // (более строгие ограничения можно добавить позже при необходимости)
 
-    // Ищем пользователя
+    // Ищем пользователя по username или email
     const userResult = await query(
       `SELECT id, username, password_hash, contact, contact_type, role, is_verified, created_at 
        FROM users 
-       WHERE username = $1`,
+       WHERE username = $1 OR contact = $1`,
       [username],
     )
 
@@ -339,6 +342,7 @@ router.get('/me', authenticateToken, async (req, res) => {
   try {
     const userResult = await query(
       `SELECT u.id, u.username, u.contact, u.contact_type, u.role, u.is_verified, u.created_at, u.updated_at,
+              u.first_name, u.last_name, u.middle_name, u.phone, u.email, u.student_id, u.group_name, u.course,
               f.file_name as avatar_file_name
        FROM users u
        LEFT JOIN files f ON u.avatar_file_id = f.id AND f.status = 'active' AND f.deleted_at IS NULL
@@ -362,6 +366,15 @@ router.get('/me', authenticateToken, async (req, res) => {
       createdAt: user.created_at,
       updatedAt: user.updated_at,
       avatarFileName: user.avatar_file_name,
+      // Добавляем ФИО и дополнительную информацию
+      firstName: user.first_name,
+      lastName: user.last_name,
+      middleName: user.middle_name,
+      phone: user.phone,
+      email: user.email,
+      studentId: user.student_id,
+      groupName: user.group_name,
+      course: user.course,
     })
   } catch (error) {
     console.error('Ошибка получения пользователя:', error)
@@ -454,6 +467,442 @@ router.get('/check-username', async (req, res) => {
     })
   } catch (error) {
     console.error('Ошибка проверки логина:', error)
+    res.status(500).json({ error: 'Внутренняя ошибка сервера' })
+  }
+})
+
+// 7.1. Проверка существования email (для восстановления пароля)
+router.get('/check-email', async (req, res) => {
+  try {
+    const { email } = req.query
+
+    if (!email) {
+      return res.status(400).json({ error: 'Email обязателен' })
+    }
+
+    // Простая валидация email
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({ error: 'Неверный формат email' })
+    }
+
+    // Проверяем существование пользователя с таким email
+    const userResult = await query('SELECT id FROM users WHERE contact = $1', [email])
+
+    res.json({
+      exists: userResult.rows.length > 0,
+      message: userResult.rows.length > 0 ? 'Email найден' : 'Email не найден',
+    })
+  } catch (error) {
+    console.error('Ошибка проверки email:', error)
+    res.status(500).json({ error: 'Внутренняя ошибка сервера' })
+  }
+})
+
+// 7.2. Запрос сброса пароля по email (без аутентификации)
+router.post('/forgot-password', async (req, res) => {
+  try {
+    const { email } = req.body
+
+    if (!email) {
+      return res.status(400).json({ error: 'Email обязателен' })
+    }
+
+    // Валидация email
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({ error: 'Неверный формат email' })
+    }
+
+    // Проверяем существование пользователя
+    const userResult = await query(
+      'SELECT id, contact, contact_type FROM users WHERE contact = $1',
+      [email],
+    )
+
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Пользователь с таким email не найден' })
+    }
+
+    const user = userResult.rows[0]
+
+    // Проверяем rate limiting
+    const rateLimitCheck = await query('SELECT check_rate_limits($1, $2)', [
+      req.ip,
+      'forgot_password',
+    ])
+
+    if (!rateLimitCheck.rows[0].check_rate_limits) {
+      return res.status(429).json({
+        error: 'Слишком много запросов. Попробуйте через 2 минуты.',
+        waitSeconds: 120,
+      })
+    }
+
+    // Генерируем и отправляем код
+    const { code, hashedCode, result } = await notificationService.sendVerificationCode(
+      user.contact,
+      user.contact_type,
+    )
+
+    if (!result.success) {
+      console.error('Ошибка отправки кода восстановления пароля:', result.error)
+      return res.status(500).json({ error: 'Ошибка отправки кода' })
+    }
+
+    console.log(`🔢 Код для восстановления пароля: ${code}, хэш: ${hashedCode}`)
+
+    // Сохраняем код в БД
+    await query(
+      `INSERT INTO verification_codes (contact, contact_type, code_hash, expires_at, ip_address, type) 
+       VALUES ($1, $2, $3, $4, $5, 'password_reset')
+       ON CONFLICT (contact, type) 
+       DO UPDATE SET 
+         code_hash = EXCLUDED.code_hash, 
+         expires_at = EXCLUDED.expires_at, 
+         ip_address = EXCLUDED.ip_address,
+         created_at = CURRENT_TIMESTAMP`,
+      [
+        user.contact,
+        user.contact_type,
+        hashedCode,
+        new Date(Date.now() + parseInt(process.env.CODE_EXPIRY_MINUTES || 10) * 60000),
+        req.ip,
+      ],
+    )
+
+    console.log(`📧 Код восстановления пароля отправлен на ${user.contact}`)
+
+    res.json({
+      message: 'Код подтверждения отправлен на ваш email',
+      contact: user.contact,
+      contactType: user.contact_type,
+      expiresIn: parseInt(process.env.CODE_EXPIRY_MINUTES || 10) * 60,
+    })
+  } catch (error) {
+    console.error('Ошибка запроса восстановления пароля:', error)
+    res.status(500).json({ error: 'Внутренняя ошибка сервера' })
+  }
+})
+
+// 7.3. Проверка кода для сброса пароля (без аутентификации)
+router.post('/verify-reset-code', async (req, res) => {
+  try {
+    const { code, email } = req.body
+
+    if (!code || !email) {
+      return res.status(400).json({ error: 'Код и email обязательны' })
+    }
+
+    // Валидация email
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({ error: 'Неверный формат email' })
+    }
+
+    // Проверяем существование пользователя
+    const userResult = await query(
+      'SELECT id, contact, contact_type FROM users WHERE contact = $1',
+      [email],
+    )
+
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Пользователь с таким email не найден' })
+    }
+
+    const user = userResult.rows[0]
+
+    // Проверяем код
+    const codeResult = await query(
+      `SELECT code_hash, attempts, expires_at 
+       FROM verification_codes 
+       WHERE contact = $1 AND type = 'password_reset' AND expires_at > CURRENT_TIMESTAMP`,
+      [user.contact],
+    )
+
+    if (codeResult.rows.length === 0) {
+      return res.status(400).json({ error: 'Код не найден или истек' })
+    }
+
+    const codeData = codeResult.rows[0]
+
+    // Проверяем количество попыток
+    if (codeData.attempts >= 5) {
+      return res.status(400).json({ error: 'Превышено количество попыток. Запросите новый код.' })
+    }
+
+    // Проверяем код
+    const isValidCode = notificationService.verifyCode(code, codeData.code_hash)
+
+    if (!isValidCode) {
+      // Увеличиваем счетчик попыток
+      await query(
+        'UPDATE verification_codes SET attempts = attempts + 1 WHERE contact = $1 AND type = $2',
+        [user.contact, 'password_reset'],
+      )
+      return res.status(400).json({ error: 'Неверный код' })
+    }
+
+    // Сбрасываем счетчик попыток при успешном вводе
+    await query('UPDATE verification_codes SET attempts = 0 WHERE contact = $1 AND type = $2', [
+      user.contact,
+      'password_reset',
+    ])
+
+    console.log(`✅ Код подтвержден для сброса пароля пользователя ${user.contact}`)
+
+    res.json({
+      message: 'Код подтвержден',
+      contact: user.contact,
+      userId: user.id,
+    })
+  } catch (error) {
+    console.error('Ошибка проверки кода сброса пароля:', error)
+    res.status(500).json({ error: 'Внутренняя ошибка сервера' })
+  }
+})
+
+// 7.4. Установка нового пароля (без аутентификации)
+router.post('/set-new-password', async (req, res) => {
+  try {
+    const { email, code, newPassword } = req.body
+
+    if (!email || !code || !newPassword) {
+      return res.status(400).json({ error: 'Email, код и новый пароль обязательны' })
+    }
+
+    // Валидация email
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({ error: 'Неверный формат email' })
+    }
+
+    // Валидация пароля (такие же требования как при регистрации)
+    if (newPassword.length < 6) {
+      return res.status(400).json({ error: 'Пароль должен содержать минимум 6 символов' })
+    }
+
+    // Проверяем существование пользователя
+    const userResult = await query(
+      'SELECT id, contact, contact_type FROM users WHERE contact = $1',
+      [email],
+    )
+
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Пользователь с таким email не найден' })
+    }
+
+    const user = userResult.rows[0]
+
+    // Проверяем код еще раз
+    const codeResult = await query(
+      `SELECT code_hash, attempts, expires_at 
+       FROM verification_codes 
+       WHERE contact = $1 AND type = 'password_reset' AND expires_at > CURRENT_TIMESTAMP`,
+      [user.contact],
+    )
+
+    if (codeResult.rows.length === 0) {
+      return res.status(400).json({ error: 'Код не найден или истек' })
+    }
+
+    const codeData = codeResult.rows[0]
+
+    // Проверяем количество попыток
+    if (codeData.attempts >= 5) {
+      return res.status(400).json({ error: 'Превышено количество попыток. Запросите новый код.' })
+    }
+
+    // Проверяем код
+    const isValidCode = notificationService.verifyCode(code, codeData.code_hash)
+
+    if (!isValidCode) {
+      return res.status(400).json({ error: 'Неверный код' })
+    }
+
+    // Хэшируем новый пароль
+    const saltRounds = parseInt(process.env.BCRYPT_ROUNDS || 12)
+    const hashedPassword = await bcrypt.hash(newPassword, saltRounds)
+
+    // Обновляем пароль пользователя
+    await query('UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2', [
+      hashedPassword,
+      user.id,
+    ])
+
+    // Удаляем использованный код
+    await query('DELETE FROM verification_codes WHERE contact = $1 AND type = $2', [
+      user.contact,
+      'password_reset',
+    ])
+
+    console.log(`✅ Пароль успешно изменен для пользователя ${user.contact}`)
+
+    res.json({
+      message: 'Пароль успешно изменен',
+      contact: user.contact,
+    })
+  } catch (error) {
+    console.error('Ошибка установки нового пароля:', error)
+    res.status(500).json({ error: 'Внутренняя ошибка сервера' })
+  }
+})
+
+// 7.5. Сброс пароля по коду (без аутентификации) - LEGACY
+router.post('/reset-password-by-code', async (req, res) => {
+  try {
+    const { code, email } = req.body
+
+    if (!code || !email) {
+      return res.status(400).json({ error: 'Код и email обязательны' })
+    }
+
+    // Валидация email
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({ error: 'Неверный формат email' })
+    }
+
+    // Проверяем существование пользователя
+    const userResult = await query(
+      'SELECT id, contact, contact_type FROM users WHERE contact = $1',
+      [email],
+    )
+
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Пользователь с таким email не найден' })
+    }
+
+    const user = userResult.rows[0]
+
+    // Проверяем код
+    const codeResult = await query(
+      `SELECT code_hash, attempts, expires_at 
+       FROM verification_codes 
+       WHERE contact = $1 AND type = 'password_reset' AND expires_at > CURRENT_TIMESTAMP`,
+      [user.contact],
+    )
+
+    if (codeResult.rows.length === 0) {
+      return res.status(400).json({ error: 'Код не найден или истек' })
+    }
+
+    const codeData = codeResult.rows[0]
+
+    // Проверяем количество попыток
+    if (codeData.attempts >= 5) {
+      return res.status(400).json({ error: 'Превышено количество попыток. Запросите новый код.' })
+    }
+
+    // Проверяем код
+    const isValidCode = notificationService.verifyCode(code, codeData.code_hash)
+
+    if (!isValidCode) {
+      // Увеличиваем счетчик попыток
+      await query(
+        'UPDATE verification_codes SET attempts = attempts + 1 WHERE contact = $1 AND type = $2',
+        [user.contact, 'password_reset'],
+      )
+      return res.status(400).json({ error: 'Неверный код' })
+    }
+
+    // Сбрасываем счетчик попыток при успешном вводе
+    await query('UPDATE verification_codes SET attempts = 0 WHERE contact = $1 AND type = $2', [
+      user.contact,
+      'password_reset',
+    ])
+
+    // Генерируем новый пароль
+    const newPassword = Math.random().toString(36).slice(-8) + Math.random().toString(36).slice(-4)
+    const hashedPassword = await bcrypt.hash(newPassword, 12)
+
+    // Обновляем пароль пользователя
+    await query('UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2', [
+      hashedPassword,
+      user.id,
+    ])
+
+    // Удаляем использованный код
+    await query('DELETE FROM verification_codes WHERE contact = $1 AND type = $2', [
+      user.contact,
+      'password_reset',
+    ])
+
+    // Отправляем новый пароль на email
+    const emailResult = await notificationService.sendPasswordResetEmail(user.contact, newPassword)
+
+    if (!emailResult.success) {
+      console.error('Ошибка отправки нового пароля:', emailResult.error)
+      return res.status(500).json({ error: 'Ошибка отправки нового пароля' })
+    }
+
+    console.log(`✅ Пароль успешно сброшен для пользователя ${user.contact}`)
+
+    res.json({
+      message: 'Новый пароль отправлен на ваш email',
+      contact: user.contact,
+    })
+  } catch (error) {
+    console.error('Ошибка сброса пароля:', error)
+    res.status(500).json({ error: 'Внутренняя ошибка сервера' })
+  }
+})
+
+// 8. Изменение username
+router.put('/change-username', authenticateToken, async (req, res) => {
+  try {
+    const { newUsername, password } = req.body
+
+    if (!newUsername || !password) {
+      return res.status(400).json({ error: 'Новый логин и пароль обязательны' })
+    }
+
+    // Валидация нового username
+    if (newUsername.length < 3 || newUsername.length > 50) {
+      return res.status(400).json({ error: 'Логин должен содержать от 3 до 50 символов' })
+    }
+
+    if (!/^[a-zA-Z0-9_-]+$/.test(newUsername)) {
+      return res.status(400).json({ error: 'Логин может содержать только буквы, цифры, _ и -' })
+    }
+
+    // Проверяем текущий пароль
+    const userResult = await query('SELECT password_hash FROM users WHERE id = $1', [req.user.id])
+
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Пользователь не найден' })
+    }
+
+    const isValidPassword = await bcrypt.compare(password, userResult.rows[0].password_hash)
+
+    if (!isValidPassword) {
+      return res.status(400).json({ error: 'Неверный пароль' })
+    }
+
+    // Проверяем уникальность нового username
+    const usernameCheck = await query('SELECT id FROM users WHERE username = $1 AND id != $2', [
+      newUsername,
+      req.user.id,
+    ])
+
+    if (usernameCheck.rows.length > 0) {
+      return res.status(400).json({ error: 'Этот логин уже занят' })
+    }
+
+    // Обновляем username
+    await query('UPDATE users SET username = $1, updated_at = NOW() WHERE id = $2', [
+      newUsername,
+      req.user.id,
+    ])
+
+    console.log(`✅ Пользователь ${req.user.username} изменил логин на: ${newUsername}`)
+
+    res.json({
+      message: 'Логин успешно изменен',
+      newUsername,
+    })
+  } catch (error) {
+    console.error('Ошибка изменения логина:', error)
     res.status(500).json({ error: 'Внутренняя ошибка сервера' })
   }
 })

@@ -104,8 +104,21 @@ class ApplicationsService {
   async createApplication(userId, applicationData) {
     try {
       return await transaction(async (client) => {
-        const { dormitoryId, preferredRoomType, academicYear, semester, documents, notes } =
-          applicationData
+        const { dormitoryId, documents, notes } = applicationData
+
+        // Определяем текущий учебный год и семестр
+        const currentDate = new Date()
+        const currentYear = currentDate.getFullYear()
+        const currentMonth = currentDate.getMonth() + 1 // 1-12
+
+        // Учебный год: если сейчас август-декабрь, то текущий-следующий, иначе предыдущий-текущий
+        const academicYear =
+          currentMonth >= 8
+            ? `${currentYear}-${currentYear + 1}`
+            : `${currentYear - 1}-${currentYear}`
+
+        // Семестр: если август-январь, то 1 семестр, иначе 2 семестр
+        const semester = (currentMonth >= 8 && currentMonth <= 12) || currentMonth === 1 ? 1 : 2
 
         // Проверяем наличие активной заявки
         await this.checkExistingApplication(client, userId, academicYear, semester)
@@ -128,11 +141,10 @@ class ApplicationsService {
         const applicationResult = await client.query(QUERIES.CREATE_APPLICATION, [
           userId,
           dormitoryId || null,
-          preferredRoomType || null,
-          academicYear,
-          semester,
           JSON.stringify(documents || []),
           notes || null,
+          academicYear,
+          semester,
         ])
 
         return applicationResult.rows[0]
@@ -305,7 +317,7 @@ class ApplicationsService {
     if (existingApplication.rows.length > 0) {
       const existing = existingApplication.rows[0]
       throw createBusinessLogicError(
-        `У вас уже есть ${existing.status === 'submitted' ? 'поданная' : 'одобренная'} заявка на этот период`,
+        `У вас уже есть ${existing.status === 'submitted' ? 'поданная' : 'одобренная'} заявка на ${academicYear} год, ${semester} семестр`,
         'DUPLICATE_APPLICATION',
         { existingApplicationId: existing.id, existingStatus: existing.status },
       )
@@ -375,9 +387,14 @@ class ApplicationsService {
     // Определяем доступные типы общежитий
     let availableTypes = []
 
-    if (course === 1 && gender === 'female') {
+    if (gender === 'female') {
+      // Все девочки (независимо от курса) - только ДПС 1
       availableTypes = [DORMITORY_TYPES.TYPE_1]
-    } else if (course >= 2 && course <= 5) {
+    } else if (gender === 'male' && course === 1) {
+      // Парни 1-го курса - только ДПС 1
+      availableTypes = [DORMITORY_TYPES.TYPE_1]
+    } else if (gender === 'male' && course >= 2 && course <= 5) {
+      // Парни 2-5 курса - только ДПС 2
       availableTypes = [DORMITORY_TYPES.TYPE_2]
     }
 
@@ -397,10 +414,12 @@ class ApplicationsService {
 
     if (dormitoryResult.rows.length === 0) {
       let message = 'Выбранное общежитие недоступно для вас. '
-      if (course === 1 && gender === 'female') {
-        message += 'Студенты 1 курса (девочки) могут выбрать только ДПС 1.'
-      } else if (course >= 2 && course <= 5) {
-        message += 'Студенты 2-5 курса могут выбрать только ДПС 2.'
+      if (gender === 'female') {
+        message += 'Девочки могут выбрать только ДПС 1.'
+      } else if (gender === 'male' && course === 1) {
+        message += 'Парни 1 курса могут выбрать только ДПС 1.'
+      } else if (gender === 'male' && course >= 2) {
+        message += `Парни ${course} курса могут выбрать только ДПС 2.`
       }
       throw createBusinessLogicError(message, 'DORMITORY_NOT_AVAILABLE', {
         course,

@@ -144,8 +144,8 @@ const QUERIES = {
     SELECT id, status 
     FROM applications 
     WHERE student_id = $1 
-      AND academic_year = $2 
-      AND semester = $3 
+      AND academic_year = $2
+      AND semester = $3
       AND status IN ('submitted', 'approved')
   `,
 
@@ -207,9 +207,8 @@ const QUERIES = {
   // Создание заявки
   CREATE_APPLICATION: `
     INSERT INTO applications (
-      student_id, dormitory_id, preferred_room_type,
-      academic_year, semester, documents, notes, status
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'submitted')
+      student_id, dormitory_id, documents, notes, status, academic_year, semester
+    ) VALUES ($1, $2, $3, $4, 'submitted', $5, $6)
     RETURNING id, submission_date, status, created_at
   `,
 
