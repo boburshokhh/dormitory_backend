@@ -17,6 +17,15 @@ function hmacSign(value) {
   return crypto.createHmac('sha256', HMAC_SECRET).update(value).digest('base64url')
 }
 
+// Функция для проверки и конвертации плейсхолдеров в шаблоне
+function validateTemplateFormat(templateName) {
+  console.log(`🔍 Проверка формата шаблона: ${templateName}`)
+  console.log('⚠️  ВАЖНО: Убедитесь что в шаблоне используется правильный синтаксис:')
+  console.log('✅ Правильно: {docNumber}, {fullName}, {birthDateStr}')
+  console.log('❌ Неправильно: %docNumber%, {%docNumber%}, ${docNumber}')
+  console.log('📝 QR-код: используйте {qr} в отдельной ячейке или строке')
+}
+
 function formatDate(dateStr, format = '«DD» MMMM YYYY г.') {
   if (!dateStr) return ''
   const date = new Date(dateStr)
@@ -218,6 +227,9 @@ exports.generateDocument = async (req, res) => {
 
     const template = templateResult.rows[0]
 
+    // Проверяем формат шаблона
+    validateTemplateFormat(template.name)
+
     // Получаем шаблон из MinIO
     const stream = await getFileStream(template.minio_key)
     const chunks = []
@@ -237,22 +249,44 @@ exports.generateDocument = async (req, res) => {
     const verificationUrl = `${VERIFY_BASE_URL}?c=${encodeURIComponent(verificationCode)}&s=${encodeURIComponent(signature)}`
     const qrPng = await QRCode.toBuffer(verificationUrl, { width: 600, margin: 0 })
 
+    // Подготовка данных для рендера DOCX
+    const templateData = {
+      ...data,
+      docNumber,
+      birthDateStr: data.birthDate ? formatDate(data.birthDate) : '',
+      periodFromStr: data.periodFrom ? formatDate(data.periodFrom) : '',
+      periodToStr: data.periodTo ? formatDate(data.periodTo) : '',
+      contractDateStr: data.contractDate ? formatDate(data.contractDate) : '',
+      // Дополнительные поля для совместимости
+      fullName: data.fullName || '',
+      addressFull: data.addressFull || '',
+      faculty: data.faculty || '',
+      course: data.course || '',
+      groupNumber: data.groupNumber || '',
+      educationForm: data.educationForm || 'очная',
+      basis: data.basis || '',
+      dormNumber: data.dormNumber || '',
+      floor: data.floor || '',
+      roomNumber: data.roomNumber || '',
+      contractNumber: data.contractNumber || '',
+      headName: data.headName || '',
+      registrarName: data.registrarName || '',
+    }
+
+    // Логирование данных для отладки
+    console.log('📋 Данные для шаблона DOCX:', JSON.stringify(templateData, null, 2))
+
     // Рендер DOCX
     const report = await createReport({
       template: templateBuffer,
-      data: {
-        ...data,
-        docNumber,
-        birthDateStr: data.birthDate ? formatDate(data.birthDate) : undefined,
-        periodFromStr: data.periodFrom ? formatDate(data.periodFrom) : undefined,
-        periodToStr: data.periodTo ? formatDate(data.periodTo) : undefined,
-        contractDateStr: data.contractDate ? formatDate(data.contractDate) : undefined,
-      },
+      data: templateData,
       additionalJsContext: {
         qr: () => ({ width: 5.0, height: 5.0, data: qrPng, extension: '.png' }),
         formatDate: (d, f) => formatDate(d, f),
       },
     })
+
+    console.log('📄 DOCX документ успешно сгенерирован, размер:', report.byteLength)
 
     // Загрузка DOCX в MinIO
     const docxKey = generateFileName(`${Date.now()}.docx`, userId || 'system', 'documents')
@@ -291,14 +325,10 @@ exports.generateDocument = async (req, res) => {
 
     await client.query('COMMIT')
 
-    // Генерируем URL-адреса
-    let docxUrl, pdfUrl
-    try {
-      docxUrl = await getFileUrlByMode(docxKey)
-      pdfUrl = await getFileUrlByMode(pdfKey)
-    } catch (e) {
-      console.error('URL generation error:', e)
-    }
+    // Генерируем URL-адреса для файлового хранилища
+    const FILE_BASE_URL = process.env.FILE_STORAGE_URL || 'https://files.dormitory.gubkin.uz'
+    const docxUrl = `${FILE_BASE_URL}/upload/${docxKey}`
+    const pdfUrl = `${FILE_BASE_URL}/upload/${pdfKey}`
 
     res.json({
       success: true,
