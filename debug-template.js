@@ -8,7 +8,8 @@
 const fs = require('fs')
 const path = require('path')
 const { execSync } = require('child_process')
-const createReport = require('docx-templates').default || require('docx-templates')
+const Docxtemplater = require('docxtemplater')
+const PizZip = require('pizzip')
 const QRCode = require('qrcode')
 
 // Цвета для консоли
@@ -243,35 +244,19 @@ class TemplateDebugger {
 
       debug('Запуск рендера с тестовыми данными...')
 
-      const report = await createReport({
-        template: templateBuffer,
-        data: TEST_DATA,
-        additionalJsContext: {
-          qr: () => ({ width: 5.0, height: 5.0, data: qrBuffer, extension: '.png' }),
-          formatDate: (dateStr, format = '«DD» MMMM YYYY г.') => {
-            if (!dateStr) return ''
-            const date = new Date(dateStr)
-            const months = [
-              'января',
-              'февраля',
-              'марта',
-              'апреля',
-              'мая',
-              'июня',
-              'июля',
-              'августа',
-              'сентября',
-              'октября',
-              'ноября',
-              'декабря',
-            ]
-            const DD = String(date.getDate()).padStart(2, '0')
-            const MMMM = months[date.getMonth()]
-            const YYYY = String(date.getFullYear())
-            return format.replace('DD', DD).replace('MMMM', MMMM).replace('YYYY', YYYY)
-          },
-        },
+      const zip = new PizZip(templateBuffer)
+      const doc = new Docxtemplater(zip, {
+        paragraphLoop: true,
+        linebreaks: true,
       })
+
+      const qrBase64 = qrBuffer.toString('base64')
+      const dataWithQR = { ...TEST_DATA, qr: qrBase64 }
+
+      doc.setData(dataWithQR)
+      doc.render()
+
+      const report = doc.getZip().generate({ type: 'nodebuffer' })
 
       const outputPath = path.join(this.outputDir, 'test-output.docx')
       fs.writeFileSync(outputPath, report)

@@ -2,7 +2,8 @@ const fs = require('fs')
 const path = require('path')
 const crypto = require('crypto')
 const { v4: uuidv4 } = require('uuid')
-const createReport = require('docx-templates').default || require('docx-templates')
+const Docxtemplater = require('docxtemplater')
+const PizZip = require('pizzip')
 const QRCode = require('qrcode')
 const libre = require('libreoffice-convert')
 const { uploadFile, generateFileName, getFileUrlByMode, getFileStream } = require('../config/minio')
@@ -276,17 +277,27 @@ exports.generateDocument = async (req, res) => {
     // Логирование данных для отладки
     console.log('📋 Данные для шаблона DOCX:', JSON.stringify(templateData, null, 2))
 
-    // Рендер DOCX
-    const report = await createReport({
-      template: templateBuffer,
-      data: templateData,
-      additionalJsContext: {
-        qr: () => ({ width: 5.0, height: 5.0, data: qrPng, extension: '.png' }),
-        formatDate: (d, f) => formatDate(d, f),
-      },
+    // Рендер DOCX с docxtemplater
+    const zip = new PizZip(templateBuffer)
+    const doc = new Docxtemplater(zip, {
+      paragraphLoop: true,
+      linebreaks: true,
     })
 
-    console.log('📄 DOCX документ успешно сгенерирован, размер:', report.byteLength)
+    // Создаем данные с QR-кодом как base64
+    const qrBase64 = qrPng.toString('base64')
+    const templateDataWithQR = {
+      ...templateData,
+      qr: qrBase64, // QR как base64 строка
+    }
+
+    // Устанавливаем данные и рендерим
+    doc.setData(templateDataWithQR)
+    doc.render()
+
+    const report = doc.getZip().generate({ type: 'nodebuffer' })
+
+    console.log('📄 DOCX документ успешно сгенерирован, размер:', report.length)
 
     // Загрузка DOCX в MinIO
     const docxKey = generateFileName(`${Date.now()}.docx`, userId || 'system', 'documents')
