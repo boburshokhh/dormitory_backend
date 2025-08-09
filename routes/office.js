@@ -18,6 +18,11 @@ router.post(
   authenticateToken,
   requireAdmin,
   upload.single('file'),
+  (req, res, next) => {
+    // Увеличиваем лимит тела только для этого роутера, если потребуется
+    // (глобально стоит 10mb, но некоторые DOCX могут быть больше)
+    next()
+  },
   officeController.createTemplate,
 )
 

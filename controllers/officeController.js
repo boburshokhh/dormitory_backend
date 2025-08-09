@@ -109,14 +109,25 @@ exports.createTemplate = async (req, res) => {
 
     // Загружаем файл в MinIO
     const minioKey = generateFileName(file.originalname, req.user.id, 'templates')
-    await uploadFile(file.buffer, minioKey, file.mimetype)
+    // Проверяем тип файла
+    const mime =
+      file.mimetype || 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    if (!mime.includes('officedocument') && !file.originalname.toLowerCase().endsWith('.docx')) {
+      return res.status(400).json({ error: 'Поддерживаются только DOCX-шаблоны' })
+    }
 
-    // Сохраняем в БД
+    await uploadFile(file.buffer, minioKey, mime)
+
+    // Подготовка JSON полей
+    const fieldsJson =
+      typeof fields_schema === 'string' && fields_schema.trim().length > 0 ? fields_schema : '{}'
+
+    // Сохраняем в БД (с явным приведением к jsonb)
     const result = await db.query(
       `INSERT INTO templates (name, description, minio_key, fields_schema, created_by)
-       VALUES ($1, $2, $3, $4, $5)
+       VALUES ($1, $2, $3, $4::jsonb, $5)
        RETURNING *`,
-      [name, description, minioKey, fields_schema || '{}', req.user.id],
+      [name, description, minioKey, fieldsJson, req.user.id],
     )
 
     res.json({
@@ -138,11 +149,11 @@ exports.updateTemplate = async (req, res) => {
       `UPDATE templates 
        SET name = COALESCE($2, name),
            description = COALESCE($3, description),
-           fields_schema = COALESCE($4, fields_schema),
+           fields_schema = COALESCE($4::jsonb, fields_schema),
            is_active = COALESCE($5, is_active)
        WHERE id = $1
        RETURNING *`,
-      [id, name, description, fields_schema, is_active],
+      [id, name, description, fields_schema || null, is_active],
     )
 
     if (result.rows.length === 0) {
@@ -249,13 +260,12 @@ exports.generateDocument = async (req, res) => {
       Buffer.from(report),
       docxKey,
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      { docNumber },
     )
 
     // Конвертация в PDF
     const pdfBuffer = await convertDocxToPdf(Buffer.from(report))
     const pdfKey = docxKey.replace(/\.docx$/, '.pdf')
-    await uploadFile(pdfBuffer, pdfKey, 'application/pdf', { docNumber })
+    await uploadFile(pdfBuffer, pdfKey, 'application/pdf')
 
     // Сохраняем документ в БД
     const docResult = await client.query(
