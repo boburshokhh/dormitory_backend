@@ -277,7 +277,7 @@ exports.generateDocument = async (req, res) => {
     // Логирование данных для отладки
     console.log('📋 Данные для шаблона DOCX:', JSON.stringify(templateData, null, 2))
 
-    // Рендер DOCX с docxtemplater
+    // Рендер DOCX с docxtemplater (новый API)
     const zip = new PizZip(templateBuffer)
     const doc = new Docxtemplater(zip, {
       paragraphLoop: true,
@@ -291,10 +291,8 @@ exports.generateDocument = async (req, res) => {
       qr: qrBase64, // QR как base64 строка
     }
 
-    // Устанавливаем данные и рендерим
-    doc.setData(templateDataWithQR)
-    doc.render()
-
+    // Используем новый API - renderAsync
+    await doc.renderAsync(templateDataWithQR)
     const report = doc.getZip().generate({ type: 'nodebuffer' })
 
     console.log('📄 DOCX документ успешно сгенерирован, размер:', report.length)

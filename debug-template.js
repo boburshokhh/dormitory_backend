@@ -253,9 +253,8 @@ class TemplateDebugger {
       const qrBase64 = qrBuffer.toString('base64')
       const dataWithQR = { ...TEST_DATA, qr: qrBase64 }
 
-      doc.setData(dataWithQR)
-      doc.render()
-
+      // Используем новый API
+      await doc.renderAsync(dataWithQR)
       const report = doc.getZip().generate({ type: 'nodebuffer' })
 
       const outputPath = path.join(this.outputDir, 'test-output.docx')
