@@ -337,7 +337,13 @@ router.get('/filters', requireAdmin, async (req, res) => {
       LEFT JOIN floors f2 ON bl.floor_id = f2.id
       JOIN dormitories d ON (f1.dormitory_id = d.id OR f2.dormitory_id = d.id)
       WHERE r.is_active = true AND d.is_active = true
-      ORDER BY d.name, floor_number, bl.block_number, r.room_number
+      ORDER BY
+        d.name,
+        floor_number,
+        bl.block_number,
+        COALESCE(NULLIF(regexp_replace(trim(r.room_number), '[^0-9].*$', ''), ''), '0')::int,
+        NULLIF(regexp_replace(trim(r.room_number), '^[0-9 ]*', ''), ''),
+        trim(r.room_number)
     `)
 
     // Группируем данные

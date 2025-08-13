@@ -114,7 +114,10 @@ router.get('/dormitories/:id', validateUUID('id'), async (req, res) => {
           LEFT JOIN beds b ON r.id = b.room_id AND b.is_active = true
           WHERE r.floor_id = $1 AND r.is_active = true
           GROUP BY r.id
-          ORDER BY r.room_number
+          ORDER BY
+            COALESCE(NULLIF(regexp_replace(trim(r.room_number), '[^0-9].*$', ''), ''), '0')::int,
+            NULLIF(regexp_replace(trim(r.room_number), '^[0-9 ]*', ''), ''),
+            trim(r.room_number)
         `,
           [floor.id],
         )
@@ -180,7 +183,10 @@ router.get('/dormitories/:id', validateUUID('id'), async (req, res) => {
             LEFT JOIN beds b ON r.id = b.room_id AND b.is_active = true
             WHERE r.block_id = $1 AND r.is_active = true
             GROUP BY r.id
-            ORDER BY r.block_room_number
+            ORDER BY
+              COALESCE(NULLIF(regexp_replace(trim(r.block_room_number::text), '[^0-9].*$', ''), ''), '0')::int,
+              NULLIF(regexp_replace(trim(r.block_room_number::text), '^[0-9 ]*', ''), ''),
+              trim(r.block_room_number::text)
           `,
               [block.id],
             )

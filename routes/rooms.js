@@ -61,7 +61,12 @@ router.get('/', async (req, res) => {
         GROUP BY room_id
       ) occupied_beds ON r.id = occupied_beds.room_id
       ${whereClause}
-      ORDER BY d.name, COALESCE(f.floor_number, f2.floor_number), r.room_number
+      ORDER BY
+        d.name,
+        COALESCE(f.floor_number, f2.floor_number),
+        COALESCE(NULLIF(regexp_replace(trim(r.room_number), '[^0-9].*$', ''), ''), '0')::int,
+        NULLIF(regexp_replace(trim(r.room_number), '^[0-9 ]*', ''), ''),
+        trim(r.room_number)
       LIMIT $${++paramCount} OFFSET $${++paramCount}
     `
 

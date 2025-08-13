@@ -5,7 +5,6 @@ const { v4: uuidv4 } = require('uuid')
 const Docxtemplater = require('docxtemplater')
 const PizZip = require('pizzip')
 const QRCode = require('qrcode')
-const { DocumentConverter } = require('@onlyoffice/document-converter')
 const { uploadFile, generateFileName, getFileUrlByMode, getFileStream } = require('../config/minio')
 const db = require('../config/database')
 
