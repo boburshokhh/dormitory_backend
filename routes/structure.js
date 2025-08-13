@@ -114,7 +114,7 @@ router.get('/dormitories/:id', validateUUID('id'), async (req, res) => {
           LEFT JOIN beds b ON r.id = b.room_id AND b.is_active = true
           WHERE r.floor_id = $1 AND r.is_active = true
           GROUP BY r.id
-          ORDER BY NULLIF(regexp_replace(r.room_number, '\\D', '', 'g'), '')::int NULLS LAST, r.room_number
+          ORDER BY r.room_number
         `,
           [floor.id],
         )
@@ -674,7 +674,7 @@ router.post(
 
         return {
           id: room.id,
-          number: parseInt(room.room_number),
+          number: room.room_number,
           bedCount: room.bed_count,
           beds: bedsResult.rows.map((bed) => ({
             id: bed.id,
