@@ -1023,4 +1023,14 @@ router.get('/stats', requireAdmin, async (req, res) => {
   }
 })
 
+// Тестовый endpoint для проверки доступности
+router.get('/test', requireAdmin, (req, res) => {
+  res.json({
+    success: true,
+    message: 'Users API работает!',
+    user: req.user,
+    timestamp: new Date().toISOString(),
+  })
+})
+
 module.exports = router

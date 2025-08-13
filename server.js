@@ -27,7 +27,7 @@ const usersRoutes = require('./routes/users')
 const structureRoutes = require('./routes/structure')
 const groupsRoutes = require('./routes/groups')
 const filesRoutes = require('./routes/files')
-const officeRoutes = require('./routes/office')
+// const officeRoutes = require('./routes/office') // Временно отключено Office
 // const logsRoutes = require('./routes/logs') // Временно отключено
 
 // Environment variables validation
@@ -222,7 +222,7 @@ app.use('/api/users', usersRoutes)
 app.use('/api/structure', structureRoutes)
 app.use('/api/groups', groupsRoutes)
 app.use('/api/files', filesRoutes)
-app.use('/api/office', officeRoutes)
+// app.use('/api/office', officeRoutes) // Временно отключено Office
 // app.use('/api/logs', logsRoutes) // Временно отключено
 
 // 404 handler (must be before error handlers)

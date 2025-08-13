@@ -15,13 +15,16 @@ const FILE_STORAGE_CONFIG = {
   ),
 
   // Резервный URL (если основной недоступен) - убираем слеш в конце
-  FALLBACK_URL: (process.env.FILE_STORAGE_FALLBACK_URL || 'http://45.138.159.79').replace(
+  FALLBACK_URL: (process.env.FILE_STORAGE_FALLBACK_URL || 'https://45.138.159.79').replace(
     /\/$/,
     '',
   ),
 
   // Локальный URL для разработки - убираем слеш в конце
-  LOCAL_URL: (process.env.FILE_STORAGE_LOCAL_URL || 'http://192.168.1.253:3000').replace(/\/$/, ''),
+  LOCAL_URL: (process.env.FILE_STORAGE_LOCAL_URL || 'https://192.168.1.253:3000').replace(
+    /\/$/,
+    '',
+  ),
 
   // Режим работы
   MODE: process.env.FILE_STORAGE_MODE || 'external', // 'external', 'local', 'hybrid'

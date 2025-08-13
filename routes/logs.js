@@ -2,9 +2,11 @@ const express = require('express')
 const router = express.Router()
 const logsController = require('../controllers/logsController')
 const auth = require('../middleware/auth')
+const { requireAdmin } = require('../middleware/auth')
 
 // Все маршруты требуют аутентификации и роли администратора
 router.use(auth)
+router.use(requireAdmin)
 
 // Получение статистики логирования
 router.get('/stats', async (req, res) => {
@@ -25,6 +27,50 @@ router.get('/system/info', async (req, res) => {
 // Получение статистики производительности
 router.get('/system/performance', async (req, res) => {
   await logsController.getPerformanceStats(req, res)
+})
+
+// Получение системной статистики (для dashboard)
+router.get('/system-stats', async (req, res) => {
+  try {
+    const { startDate, endDate } = req.query
+
+    // Простая статистика для dashboard
+    const stats = {
+      summary: {
+        totalUserActivities: Math.floor(Math.random() * 100) + 50, // Заглушка
+        suspiciousIPs: Math.floor(Math.random() * 10) + 1,
+        totalRequests: Math.floor(Math.random() * 1000) + 500,
+      },
+      successStats: {
+        failed: Math.floor(Math.random() * 20) + 5,
+        success: Math.floor(Math.random() * 800) + 400,
+      },
+      dateRange: {
+        start: startDate,
+        end: endDate,
+      },
+    }
+
+    res.json({
+      success: true,
+      data: stats,
+    })
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: 'Ошибка получения системной статистики',
+    })
+  }
+})
+
+// Тестовый endpoint для проверки доступности
+router.get('/test', (req, res) => {
+  res.json({
+    success: true,
+    message: 'Logs API работает!',
+    user: req.user,
+    timestamp: new Date().toISOString(),
+  })
 })
 
 // Получение списка всех лог файлов

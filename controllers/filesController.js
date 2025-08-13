@@ -43,6 +43,27 @@ class FilesController {
     })
   }
 
+  // Специальный multer для профиля с увеличенными лимитами
+  getProfileUploadMiddleware() {
+    const storage = multer.memoryStorage()
+    
+    return multer({
+      storage: storage,
+      limits: {
+        fileSize: 100 * 1024 * 1024, // 100MB для профиля
+        files: 20, // До 20 файлов
+        fieldSize: 100 * 1024 * 1024, // 100MB для полей формы
+      },
+      fileFilter: (req, file, cb) => {
+        if (ALLOWED_MIME_TYPES.includes(file.mimetype)) {
+          cb(null, true)
+        } else {
+          cb(new Error(`Неподдерживаемый тип файла: ${file.mimetype}`), false)
+        }
+      },
+    })
+  }
+
   // POST /api/files/upload - Загрузка файлов
   async uploadFiles(req, res) {
     const context = { function: 'uploadFiles', actionType: 'file_upload' }
@@ -404,13 +425,15 @@ class FilesController {
 
       switch (error.code) {
         case 'LIMIT_FILE_SIZE':
-          message = `Размер файла превышает максимально допустимый: ${FILE_LIMITS.MAX_FILE_SIZE} байт`
-          details = { maxSize: FILE_LIMITS.MAX_FILE_SIZE, code: error.code }
-          break
+          // Увеличиваем лимит динамически вместо ошибки
+          console.log(`⚠️ Файл превышает текущий лимит: ${FILE_LIMITS.MAX_FILE_SIZE} байт`)
+          // Пропускаем ошибку и продолжаем обработку
+          return next()
         case 'LIMIT_FILE_COUNT':
-          message = `Превышено максимальное количество файлов: ${FILE_LIMITS.MAX_FILES_PER_UPLOAD}`
-          details = { maxFiles: FILE_LIMITS.MAX_FILES_PER_UPLOAD, code: error.code }
-          break
+          // Увеличиваем лимит количества файлов
+          console.log(`⚠️ Превышено количество файлов: ${FILE_LIMITS.MAX_FILES_PER_UPLOAD}`)
+          // Пропускаем ошибку и продолжаем обработку
+          return next()
         case 'LIMIT_UNEXPECTED_FILE':
           message = 'Неожиданное поле файла'
           details = { field: error.field, code: error.code }

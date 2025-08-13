@@ -5,7 +5,7 @@ const { v4: uuidv4 } = require('uuid')
 const Docxtemplater = require('docxtemplater')
 const PizZip = require('pizzip')
 const QRCode = require('qrcode')
-const libre = require('libreoffice-convert')
+const { DocumentConverter } = require('@onlyoffice/document-converter')
 const { uploadFile, generateFileName, getFileUrlByMode, getFileStream } = require('../config/minio')
 const db = require('../config/database')
 
@@ -51,12 +51,61 @@ function formatDate(dateStr, format = '«DD» MMMM YYYY г.') {
 }
 
 async function convertDocxToPdf(buffer) {
-  return new Promise((resolve, reject) => {
-    libre.convert(buffer, '.pdf', undefined, (err, done) => {
-      if (err) return reject(err)
-      resolve(done)
-    })
-  })
+  try {
+    // Сначала пробуем через npm пакет
+    try {
+      const { DocumentConverter } = require('@onlyoffice/document-converter')
+      const converter = new DocumentConverter()
+      const result = await converter.convert(buffer, 'docx', 'pdf')
+      return result
+    } catch (npmError) {
+      console.log('NPM пакет недоступен, используем командную строку...')
+
+      // Альтернатива: через командную строку OnlyOffice
+      const tempDocx = path.join('/tmp', `temp_${Date.now()}.docx`)
+      const tempPdf = path.join('/tmp', `temp_${Date.now()}.pdf`)
+
+      // Сохраняем буфер во временный файл
+      fs.writeFileSync(tempDocx, buffer)
+
+      // Конвертируем через командную строку
+      const { exec } = require('child_process')
+      const util = require('util')
+      const execAsync = util.promisify(exec)
+
+      // Пробуем разные команды OnlyOffice
+      let convertCommand = ''
+      if (require('fs').existsSync('/usr/bin/convert')) {
+        convertCommand = `/usr/bin/convert "${tempDocx}" "${tempPdf}"`
+      } else if (require('fs').existsSync('/usr/bin/onlyoffice-convert')) {
+        convertCommand = `/usr/bin/onlyoffice-convert "${tempDocx}" "${tempPdf}"`
+      } else if (require('fs').existsSync('/usr/bin/soffice')) {
+        convertCommand = `/usr/bin/soffice --headless --convert-to pdf --outdir /tmp "${tempDocx}"`
+        tempPdf = tempDocx.replace('.docx', '.pdf')
+      } else {
+        throw new Error('OnlyOffice не найден. Установите: bash install-onlyoffice.sh')
+      }
+
+      console.log(`Выполняем команду: ${convertCommand}`)
+      await execAsync(convertCommand, { timeout: 30000 })
+
+      // Читаем результат
+      if (fs.existsSync(tempPdf)) {
+        const pdfBuffer = fs.readFileSync(tempPdf)
+
+        // Очищаем временные файлы
+        fs.unlinkSync(tempDocx)
+        fs.unlinkSync(tempPdf)
+
+        return pdfBuffer
+      } else {
+        throw new Error('PDF файл не создан')
+      }
+    }
+  } catch (error) {
+    console.error('Ошибка конвертации OnlyOffice:', error)
+    throw new Error(`Ошибка конвертации в PDF: ${error.message}`)
+  }
 }
 
 function generateDocNumber() {

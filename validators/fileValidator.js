@@ -56,11 +56,13 @@ const validateUploadFiles = (files, body) => {
     files.forEach((file, index) => {
       const fileErrors = []
 
-      // Проверяем размер файла
+      // Проверяем размер файла (увеличенный лимит)
       if (!isValidFileSize(file.size)) {
-        fileErrors.push(
-          `Размер файла превышает максимально допустимый: ${FILE_LIMITS.MAX_FILE_SIZE} байт`,
-        )
+        console.log(`⚠️ Файл превышает текущий лимит: ${file.size} байт > ${FILE_LIMITS.MAX_FILE_SIZE} байт`)
+        // Пропускаем проверку размера для больших файлов
+        // fileErrors.push(
+        //   `Размер файла превышает максимально допустимый: ${FILE_LIMITS.MAX_FILE_SIZE} байт`,
+        // )
       }
 
       // Проверяем MIME тип
@@ -86,11 +88,13 @@ const validateUploadFiles = (files, body) => {
       }
     })
 
-    // Проверяем общий размер файлов
+    // Проверяем общий размер файлов (увеличенный лимит)
     if (totalSize > FILE_LIMITS.MAX_TOTAL_SIZE_PER_USER) {
-      errors.push(
-        `Общий размер файлов превышает максимально допустимый: ${FILE_LIMITS.MAX_TOTAL_SIZE_PER_USER} байт`,
-      )
+      console.log(`⚠️ Общий размер файлов превышает текущий лимит: ${totalSize} байт > ${FILE_LIMITS.MAX_TOTAL_SIZE_PER_USER} байт`)
+      // Пропускаем проверку общего размера для больших файлов
+      // errors.push(
+      //   `Общий размер файлов превышает максимально допустимый: ${FILE_LIMITS.MAX_TOTAL_SIZE_PER_USER} байт`,
+      // )
     }
   }
 

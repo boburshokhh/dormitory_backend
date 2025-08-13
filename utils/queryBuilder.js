@@ -31,12 +31,25 @@ const buildApplicationFilters = (userRole, userId, filters = {}) => {
     }
 
     // Остальные фильтры
-    const { status, dormitory_id, academic_year, semester } = filters
+    const {
+      status,
+      dormitory_id,
+      academic_year,
+      semester,
+      group_id,
+      region,
+      course,
+      dormitory_type,
+    } = filters
 
     if (status) conditions['a.status'] = status
     if (dormitory_id) conditions['a.dormitory_id'] = dormitory_id
     if (academic_year) conditions['a.academic_year'] = academic_year
     if (semester) conditions['a.semester'] = semester
+    if (group_id) conditions['g.id'] = group_id
+    if (region) conditions['u.region'] = region
+    if (course) conditions['g.course'] = course
+    if (dormitory_type) conditions['d.type'] = dormitory_type
 
     const { whereClause, paramCount } = buildWhereClause(conditions, params)
 

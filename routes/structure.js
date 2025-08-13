@@ -9,6 +9,16 @@ const {
 
 const router = express.Router()
 
+// Обеспечить наличие колонки is_reserved в таблице rooms
+async function ensureRoomsReservationColumn() {
+  try {
+    await query('ALTER TABLE rooms ADD COLUMN IF NOT EXISTS is_reserved boolean DEFAULT false')
+  } catch (e) {
+    // Игнорируем, если нет прав; остальные операции могут продолжиться
+    console.warn('ensureRoomsReservationColumn warning:', e.message)
+  }
+}
+
 // Применяем аутентификацию ко всем маршрутам
 router.use(authenticateToken)
 
@@ -104,7 +114,7 @@ router.get('/dormitories/:id', validateUUID('id'), async (req, res) => {
           LEFT JOIN beds b ON r.id = b.room_id AND b.is_active = true
           WHERE r.floor_id = $1 AND r.is_active = true
           GROUP BY r.id
-          ORDER BY r.room_number::integer
+          ORDER BY NULLIF(regexp_replace(r.room_number, '\\D', '', 'g'), '')::int NULLS LAST, r.room_number
         `,
           [floor.id],
         )
@@ -125,9 +135,10 @@ router.get('/dormitories/:id', validateUUID('id'), async (req, res) => {
 
             return {
               id: room.id,
-              number: parseInt(room.room_number),
+              number: room.room_number,
               bedCount: parseInt(room.bed_count) || 0,
               occupiedBeds: parseInt(room.occupied_beds) || 0,
+              isReserved: room.is_reserved === true,
               beds: bedsResult.rows.map((bed) => ({
                 id: bed.id,
                 number: bed.bed_number,
@@ -194,6 +205,7 @@ router.get('/dormitories/:id', validateUUID('id'), async (req, res) => {
                   blockRoomNumber: room.block_room_number,
                   bedCount: parseInt(room.bed_count) || 0,
                   occupiedBeds: parseInt(room.occupied_beds) || 0,
+                  isReserved: room.is_reserved === true,
                   beds: bedsResult.rows.map((bed) => ({
                     id: bed.id,
                     number: bed.bed_number,
@@ -364,7 +376,7 @@ router.put(
 
       // Проверяем существование койки
       const bedResult = await query(
-        `SELECT b.*, r.room_number, d.name as dormitory_name
+        `SELECT b.*, r.room_number, r.is_reserved as room_is_reserved, d.name as dormitory_name
          FROM beds b
          JOIN rooms r ON b.room_id = r.id
          LEFT JOIN floors f ON r.floor_id = f.id
@@ -383,6 +395,11 @@ router.put(
 
       if (bed.is_occupied) {
         return res.status(409).json({ error: 'Койка уже занята' })
+      }
+
+      // Блокируем назначение, если комната зарезервирована
+      if (bed.room_is_reserved) {
+        return res.status(409).json({ error: 'Комната находится в резерве' })
       }
 
       // Проверяем существование студента
@@ -595,7 +612,7 @@ router.post(
       const { floorId } = req.params
       const { roomNumber, description } = req.body
 
-      if (!roomNumber) {
+      if (!roomNumber || String(roomNumber).trim().length === 0) {
         return res.status(400).json({ error: 'Номер комнаты обязателен' })
       }
 
@@ -622,18 +639,12 @@ router.post(
         })
       }
 
-      // Проверяем формат номера комнаты
-      const roomStr = roomNumber.toString()
-      if (!roomStr.startsWith(floor_number.toString())) {
-        return res.status(400).json({
-          error: `Номер комнаты должен начинаться с ${floor_number}`,
-        })
-      }
+      // Формат номера комнаты больше не ограничивается номером этажа
 
       // Проверяем дубликат
       const existingRoom = await query(
-        'SELECT id FROM rooms WHERE floor_id = $1 AND room_number = $2',
-        [floorId, roomNumber],
+        'SELECT id FROM rooms WHERE floor_id = $1 AND trim(room_number) ILIKE trim($2)',
+        [floorId, String(roomNumber)],
       )
 
       if (existingRoom.rows.length > 0) {
@@ -644,8 +655,8 @@ router.post(
       const result = await transaction(async (client) => {
         // Создаем комнату
         const roomResult = await client.query(
-          'INSERT INTO rooms (floor_id, room_number, description, bed_count) VALUES ($1, $2, $3, 2) RETURNING *',
-          [floorId, roomNumber, description || null],
+          'INSERT INTO rooms (floor_id, room_number, description, bed_count, is_reserved) VALUES ($1, trim($2), $3, 2, false) RETURNING *',
+          [floorId, String(roomNumber), description || null],
         )
 
         const room = roomResult.rows[0]
@@ -864,4 +875,42 @@ router.delete(
   },
 )
 
+// PUT /api/structure/rooms/:id/reserve - Установить/снять резерв комнаты
+router.put(
+  '/rooms/:id/reserve',
+  requireAdmin,
+  validateUUID('id'),
+  logAdminAction('toggle_room_reserve'),
+  async (req, res) => {
+    try {
+      const { id } = req.params
+      const { reserved } = req.body
+      if (typeof reserved !== 'boolean') {
+        return res.status(400).json({ error: 'Поле reserved должно быть boolean' })
+      }
+
+      const result = await query(
+        'UPDATE rooms SET is_reserved = $1, updated_at = NOW() WHERE id = $2 AND is_active = true RETURNING id, room_number, is_reserved',
+        [reserved, id],
+      )
+
+      if (result.rows.length === 0) {
+        return res.status(404).json({ error: 'Комната не найдена' })
+      }
+
+      res.json({
+        message: `Комната ${result.rows[0].room_number} ${reserved ? 'переведена в резерв' : 'выведена из резерва'}`,
+        id: result.rows[0].id,
+        isReserved: result.rows[0].is_reserved,
+      })
+    } catch (error) {
+      console.error('Ошибка обновления резерва комнаты:', error)
+      res.status(500).json({ error: 'Ошибка обновления статуса резерва' })
+    }
+  },
+)
+
 module.exports = router
+
+// Инициализация миграции поля is_reserved при первом импорте роутера
+ensureRoomsReservationColumn().catch(() => {})

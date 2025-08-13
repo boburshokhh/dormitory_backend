@@ -38,9 +38,9 @@ const FILE_EXTENSIONS = {
 }
 
 const FILE_LIMITS = {
-  MAX_FILE_SIZE: parseInt(process.env.MAX_FILE_SIZE) || 10 * 1024 * 1024, // 10MB
-  MAX_FILES_PER_UPLOAD: 5,
-  MAX_TOTAL_SIZE_PER_USER: 100 * 1024 * 1024, // 100MB
+  MAX_FILE_SIZE: parseInt(process.env.MAX_FILE_SIZE) || 100 * 1024 * 1024, // 100MB
+  MAX_FILES_PER_UPLOAD: 20,
+  MAX_TOTAL_SIZE_PER_USER: 2000 * 1024 * 1024, // 2GB
   PRESIGNED_URL_EXPIRY: 3600, // 1 час
 }
 
@@ -91,7 +91,8 @@ const getFileTypeByFieldName = (originalName, fieldName) => {
   if (fieldName === 'passport_file' || fieldName === 'passport') return FILE_TYPES.PASSPORT
   if (fieldName === 'photo_3x4' || fieldName === 'photo') return FILE_TYPES.PHOTO_3X4
   if (fieldName === 'avatar') return FILE_TYPES.AVATAR
-  if (fieldName === 'social_protection_file' || fieldName === 'social_protection') return FILE_TYPES.SOCIAL_PROTECTION
+  if (fieldName === 'social_protection_file' || fieldName === 'social_protection')
+    return FILE_TYPES.SOCIAL_PROTECTION
 
   return getFileTypeByExtension(originalName)
 }

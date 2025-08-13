@@ -22,10 +22,28 @@ class ApplicationsController {
     try {
       // Валидация параметров
       const validatedParams = validateListParams(req.query)
-      const { status, dormitory_id, academic_year, semester } = req.query
+      const {
+        status,
+        dormitory_id,
+        academic_year,
+        semester,
+        group_id,
+        region,
+        course,
+        dormitory_type,
+      } = req.query
 
       // Фильтры
-      const filters = { status, dormitory_id, academic_year, semester }
+      const filters = {
+        status,
+        dormitory_id,
+        academic_year,
+        semester,
+        group_id,
+        region,
+        course,
+        dormitory_type,
+      }
 
       // Получаем данные через сервис
       const result = await applicationsService.getApplicationsList(

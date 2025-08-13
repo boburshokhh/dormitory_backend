@@ -458,7 +458,7 @@ router.post('/submit', async (req, res) => {
 // POST /api/profile/submit-with-files - Финальная отправка профиля с файлами
 router.post(
   '/submit-with-files',
-  filesController.getUploadMiddleware(),
+  filesController.getProfileUploadMiddleware().array('files', 10),
   filesController.handleMulterError,
   async (req, res) => {
     try {
