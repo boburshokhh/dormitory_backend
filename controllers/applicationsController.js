@@ -33,6 +33,7 @@ class ApplicationsController {
         dormitory_type,
         has_social_protection,
         search,
+        gender,
       } = req.query
 
       // Фильтры
@@ -47,6 +48,7 @@ class ApplicationsController {
         dormitory_type,
         has_social_protection,
         search,
+        gender,
       }
 
       // Получаем данные через сервис

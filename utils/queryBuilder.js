@@ -51,6 +51,7 @@ const buildApplicationFilters = (userRole, userId, filters = {}) => {
       dormitory_type,
       has_social_protection,
       search,
+      gender,
     } = filters
 
     if (status) conditions['a.status'] = status
@@ -61,6 +62,7 @@ const buildApplicationFilters = (userRole, userId, filters = {}) => {
     if (group_id) conditions['CAST(g.id AS TEXT)'] = String(group_id).trim()
     if (region) conditions['u.region'] = region
     if (course) conditions['g.course'] = Number(course)
+    if (gender) conditions['u.gender'] = String(gender).trim()
     if (dormitory_type) {
       const normalizedDormType = String(dormitory_type).trim()
       conditions['d.type'] =
