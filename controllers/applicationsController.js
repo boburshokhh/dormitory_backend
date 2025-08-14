@@ -31,6 +31,8 @@ class ApplicationsController {
         region,
         course,
         dormitory_type,
+        has_social_protection,
+        search,
       } = req.query
 
       // Фильтры
@@ -43,6 +45,8 @@ class ApplicationsController {
         region,
         course,
         dormitory_type,
+        has_social_protection,
+        search,
       }
 
       // Получаем данные через сервис

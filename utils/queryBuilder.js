@@ -1,7 +1,7 @@
 const { createDatabaseError } = require('./errorHandler')
 
-// Утилита для построения динамических WHERE условий
-const buildWhereClause = (conditions, params) => {
+// Утилита для построения динамических WHERE условий (поддержка raw-выражений)
+const buildWhereClause = (conditions, params, rawConditions = []) => {
   try {
     let whereClause = 'WHERE 1=1'
     let paramCount = 0
@@ -13,6 +13,14 @@ const buildWhereClause = (conditions, params) => {
       }
     })
 
+    if (Array.isArray(rawConditions) && rawConditions.length > 0) {
+      rawConditions.forEach((expr) => {
+        if (expr && typeof expr === 'string') {
+          whereClause += ` AND (${expr})`
+        }
+      })
+    }
+
     return { whereClause, paramCount }
   } catch (error) {
     throw createDatabaseError('Ошибка построения WHERE условий', 'query_builder', error)
@@ -23,6 +31,7 @@ const buildWhereClause = (conditions, params) => {
 const buildApplicationFilters = (userRole, userId, filters = {}) => {
   try {
     const conditions = {}
+    const rawConditions = []
     const params = []
 
     // Фильтрация по роли пользователя
@@ -40,20 +49,56 @@ const buildApplicationFilters = (userRole, userId, filters = {}) => {
       region,
       course,
       dormitory_type,
+      has_social_protection,
+      search,
     } = filters
 
     if (status) conditions['a.status'] = status
     if (dormitory_id) conditions['a.dormitory_id'] = dormitory_id
     if (academic_year) conditions['a.academic_year'] = academic_year
     if (semester) conditions['a.semester'] = semester
-    if (group_id) conditions['g.id'] = group_id
+    // Фильтр по группе: приводим к тексту для совместимости типов (UUID/INT)
+    if (group_id) conditions['CAST(g.id AS TEXT)'] = String(group_id).trim()
     if (region) conditions['u.region'] = region
-    if (course) conditions['g.course'] = course
-    if (dormitory_type) conditions['d.type'] = dormitory_type
+    if (course) conditions['g.course'] = Number(course)
+    if (dormitory_type) {
+      const normalizedDormType = String(dormitory_type).trim()
+      conditions['d.type'] =
+        normalizedDormType === '1'
+          ? 'type_1'
+          : normalizedDormType === '2'
+            ? 'type_2'
+            : normalizedDormType
+    }
 
-    const { whereClause, paramCount } = buildWhereClause(conditions, params)
+    // Фильтр по наличию/отсутствию документа соц. защиты
+    if (has_social_protection === 'true') {
+      rawConditions.push(`EXISTS (
+        SELECT 1 FROM files f
+        WHERE f.user_id = u.id AND f.file_type = 'social_protection'
+          AND f.status IN ('active','uploading') AND f.deleted_at IS NULL
+      )`)
+    } else if (has_social_protection === 'false') {
+      rawConditions.push(`NOT EXISTS (
+        SELECT 1 FROM files f
+        WHERE f.user_id = u.id AND f.file_type = 'social_protection'
+          AND f.status IN ('active','uploading') AND f.deleted_at IS NULL
+      )`)
+    }
 
-    return { whereClause, params, paramCount }
+    const { whereClause, paramCount } = buildWhereClause(conditions, params, rawConditions)
+
+    // Поиск по ФИО/Email/студ. номеру (ILIKE) — добавляем после, чтобы нумерация параметров была корректной
+    let finalWhere = whereClause
+    let finalParamCount = paramCount
+    if (search && String(search).trim().length > 0) {
+      const term = `%${String(search).trim()}%`
+      finalWhere += ` AND (u.first_name ILIKE $${finalParamCount + 1} OR u.last_name ILIKE $${finalParamCount + 1} OR u.email ILIKE $${finalParamCount + 1} OR u.student_id ILIKE $${finalParamCount + 1})`
+      params.push(term)
+      finalParamCount += 1
+    }
+
+    return { whereClause: finalWhere, params, paramCount: finalParamCount }
   } catch (error) {
     throw createDatabaseError('Ошибка построения фильтров заявок', 'applications', error)
   }
@@ -79,9 +124,18 @@ const QUERIES = {
       u.student_id as student_number,
       g.name as group_name, 
       g.course,
+      -- Признак социальной защиты (наличие активного файла соответствующего типа)
+      EXISTS (
+        SELECT 1 FROM files f
+        WHERE f.user_id = u.id
+          AND f.file_type = 'social_protection'
+          AND f.status IN ('active','uploading')
+          AND f.deleted_at IS NULL
+      ) AS has_social_protection,
       
       -- Название общежития
-      d.name AS dormitory_name
+      d.name AS dormitory_name,
+      d.type AS dormitory_type
 
     FROM applications a
     JOIN users u ON a.student_id = u.id
@@ -150,6 +204,8 @@ const QUERIES = {
     SELECT COUNT(*) as total
     FROM applications a
     JOIN users u ON a.student_id = u.id
+    LEFT JOIN dormitories d ON a.dormitory_id = d.id
+    LEFT JOIN groups g ON u.group_id = g.id
   `,
 
   // Проверка существующей заявки

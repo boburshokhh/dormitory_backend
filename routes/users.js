@@ -458,6 +458,46 @@ router.get('/filters', requireAdmin, async (req, res) => {
   }
 })
 
+// GET /api/users/stats - Статистика пользователей (только админы)
+router.get('/stats', requireAdmin, async (req, res) => {
+  try {
+    const result = await query(`
+      SELECT 
+        role,
+        COUNT(*) as count,
+        COUNT(CASE WHEN is_active = true THEN 1 END) as active_count
+      FROM users
+      GROUP BY role
+    `)
+
+    const roleStats = {
+      student: { total: 0, active: 0 },
+      admin: { total: 0, active: 0 },
+      super_admin: { total: 0, active: 0 },
+    }
+
+    result.rows.forEach((row) => {
+      roleStats[row.role] = {
+        total: parseInt(row.count),
+        active: parseInt(row.active_count),
+      }
+    })
+
+    const totalUsers = Object.values(roleStats).reduce((acc, stat) => acc + stat.total, 0)
+    const totalActive = Object.values(roleStats).reduce((acc, stat) => acc + stat.active, 0)
+
+    res.json({
+      roleStats,
+      totalUsers,
+      totalActive,
+      totalInactive: totalUsers - totalActive,
+    })
+  } catch (error) {
+    console.error('Ошибка получения статистики:', error)
+    res.status(500).json({ error: 'Ошибка получения статистики' })
+  }
+})
+
 // GET /api/users/:id - Получить пользователя по ID
 router.get('/:id', validateUUID('id'), requireAdmin, async (req, res) => {
   try {

@@ -49,15 +49,21 @@ class NotificationService {
         return { success: true, messageId: 'no-smtp-config' }
       }
 
+      const fromAddress = process.env.SMTP_USER
       const mailOptions = {
-        from: `"Общежития ГУБКИН" <${process.env.SMTP_USER}>`,
+        from: fromAddress,
         to: email,
+        envelope: {
+          from: fromAddress,
+          to: email,
+        },
         subject: '🔐 Код подтверждения для входа',
         html: `
           <div style="max-width: 600px; margin: 0 auto; font-family: 'Segoe UI', Arial, sans-serif;">
             <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
-              <h1 style="color: white; margin: 0; font-size: 28px;">🏢 Общежития ГУБКИН</h1>
-              <p style="color: rgba(255,255,255,0.9); margin: 10px 0 0 0; font-size: 16px;">Система управления общежитиями</p>
+              <img src="https://www.priem.gubkin.uz/assets/gubkin_logo-75ce35e1.png" alt="Логотип Губкин" style="height: 56px; margin-bottom: 12px;" />
+              <h1 style="color: white; margin: 0; font-size: 24px;">Дом проживания студентов</h1>
+              <p style="color: rgba(255,255,255,0.9); margin: 10px 0 0 0; font-size: 14px;">Филиал РГУ нефти и газа (НИУ) имени И.М. Губкина в городе Ташкенте</p>
             </div>
             
             <div style="background: white; padding: 40px; border-radius: 0 0 10px 10px; box-shadow: 0 4px 20px rgba(0,0,0,0.1);">
@@ -82,7 +88,7 @@ class NotificationService {
               <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
               
               <p style="color: #999; font-size: 12px; text-align: center; margin: 0;">
-                © 2024 Общежития ГУБКИН. Система управления проживанием студентов.<br>
+                © 2024 Дом проживания студентов. Филиал РГУ нефти и газа (НИУ) имени И.М. Губкина в городе Ташкенте.<br>
                 Это автоматическое письмо, не отвечайте на него.
               </p>
             </div>
@@ -189,15 +195,21 @@ class NotificationService {
         return { success: true, messageId: 'no-smtp-config' }
       }
 
+      const fromAddress = process.env.SMTP_USER
       const mailOptions = {
-        from: `"Общежития ГУБКИН" <${process.env.SMTP_USER}>`,
+        from: fromAddress,
         to: email,
+        envelope: {
+          from: fromAddress,
+          to: email,
+        },
         subject: '🔐 Новый пароль для входа в систему',
         html: `
           <div style="max-width: 600px; margin: 0 auto; font-family: 'Segoe UI', Arial, sans-serif;">
             <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
-              <h1 style="color: white; margin: 0; font-size: 28px;">🏢 Общежития ГУБКИН</h1>
-              <p style="color: rgba(255,255,255,0.9); margin: 10px 0 0 0; font-size: 16px;">Система управления общежитиями</p>
+              <img src="https://www.priem.gubkin.uz/assets/gubkin_logo-75ce35e1.png" alt="Логотип Губкин" style="height: 56px; margin-bottom: 12px;" />
+              <h1 style="color: white; margin: 0; font-size: 24px;">Дом проживания студентов</h1>
+              <p style="color: rgba(255,255,255,0.9); margin: 10px 0 0 0; font-size: 14px;">Филиал РГУ нефти и газа (НИУ) имени И.М. Губкина в городе Ташкенте</p>
             </div>
             
             <div style="background: white; padding: 40px; border-radius: 0 0 10px 10px; box-shadow: 0 4px 20px rgba(0,0,0,0.1);">
@@ -233,7 +245,7 @@ class NotificationService {
               <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
               
               <p style="color: #999; font-size: 12px; text-align: center; margin: 0;">
-                © 2024 Общежития ГУБКИН. Система управления проживанием студентов.<br>
+                © 2024 Дом проживания студентов. Филиал РГУ нефти и газа (НИУ) имени И.М. Губкина в городе Ташкенте.<br>
                 Это автоматическое письмо, не отвечайте на него.
               </p>
             </div>

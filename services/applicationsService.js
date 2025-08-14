@@ -577,8 +577,9 @@ class ApplicationsService {
         studentId: app.student_number,
         groupName: app.group_name,
         course: app.course,
+        hasSocialProtection: app.has_social_protection === true,
       },
-      dormitory: app.dormitory_name ? { name: app.dormitory_name } : null,
+      dormitory: app.dormitory_name ? { name: app.dormitory_name, type: app.dormitory_type } : null,
     }
   }
 
