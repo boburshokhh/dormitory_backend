@@ -27,7 +27,7 @@ const usersRoutes = require('./routes/users')
 const structureRoutes = require('./routes/structure')
 const groupsRoutes = require('./routes/groups')
 const filesRoutes = require('./routes/files')
-// const officeRoutes = require('./routes/office') // Временно отключено Office
+// Документооборот удалён
 // const logsRoutes = require('./routes/logs') // Временно отключено
 
 // Environment variables validation
