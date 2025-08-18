@@ -217,6 +217,7 @@ app.use('/api/floors', floorsRoutes)
 app.use('/api/blocks', blocksRoutes)
 app.use('/api/rooms', roomsRoutes)
 app.use('/api/beds', bedsRoutes)
+
 app.use('/api/applications', applicationsRoutes)
 app.use('/api/users', usersRoutes)
 app.use('/api/structure', structureRoutes)

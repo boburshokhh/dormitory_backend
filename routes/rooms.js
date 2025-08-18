@@ -43,6 +43,8 @@ router.get('/', async (req, res) => {
         r.bed_count as total_beds,
         r.description,
         r.amenities,
+        r.is_reserved,
+        r.is_female,
         d.name as dormitory_name,
         f.floor_number,
         COALESCE(occupied_beds.count, 0) as occupied_beds,
@@ -106,6 +108,8 @@ router.get('/', async (req, res) => {
       availableBeds: row.available_beds,
       description: row.description,
       amenities: row.amenities || [],
+      isReserved: row.is_reserved === true,
+      isFemale: row.is_female === true,
     }))
 
     const totalItems = parseInt(countResult.rows[0].total)

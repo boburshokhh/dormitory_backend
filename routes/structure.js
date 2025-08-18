@@ -19,6 +19,15 @@ async function ensureRoomsReservationColumn() {
   }
 }
 
+// Обеспечить наличие колонки is_female в таблице rooms
+async function ensureRoomsFemaleColumn() {
+  try {
+    await query('ALTER TABLE rooms ADD COLUMN IF NOT EXISTS is_female boolean DEFAULT false')
+  } catch (e) {
+    console.warn('ensureRoomsFemaleColumn warning:', e.message)
+  }
+}
+
 // Применяем аутентификацию ко всем маршрутам
 router.use(authenticateToken)
 
@@ -142,6 +151,7 @@ router.get('/dormitories/:id', validateUUID('id'), async (req, res) => {
               bedCount: parseInt(room.bed_count) || 0,
               occupiedBeds: parseInt(room.occupied_beds) || 0,
               isReserved: room.is_reserved === true,
+              isFemale: room.is_female === true,
               beds: bedsResult.rows.map((bed) => ({
                 id: bed.id,
                 number: bed.bed_number,
@@ -212,6 +222,7 @@ router.get('/dormitories/:id', validateUUID('id'), async (req, res) => {
                   bedCount: parseInt(room.bed_count) || 0,
                   occupiedBeds: parseInt(room.occupied_beds) || 0,
                   isReserved: room.is_reserved === true,
+                  isFemale: room.is_female === true,
                   beds: bedsResult.rows.map((bed) => ({
                     id: bed.id,
                     number: bed.bed_number,
@@ -308,9 +319,15 @@ router.get('/students', requireAdmin, async (req, res) => {
       paramIndex++
     }
 
+    if (req.query.gender) {
+      whereClause += ` AND u.gender = $${paramIndex}`
+      params.push(req.query.gender)
+      paramIndex++
+    }
+
     const result = await query(
       `SELECT DISTINCT ON (u.id) u.id, u.first_name, u.last_name, u.middle_name, 
-              u.student_id, u.group_name, u.course, u.phone, u.email,
+              u.student_id, u.group_name, u.course, u.phone, u.email, u.gender,
               g.name as group_full_name, g.faculty, g.speciality,
               b.id as bed_id, r.room_number, d.name as dormitory_name,
               a.id as application_id, a.status as application_status, a.submission_date
@@ -342,6 +359,7 @@ router.get('/students', requireAdmin, async (req, res) => {
       speciality: row.speciality,
       phone: row.phone,
       email: row.email,
+      gender: row.gender,
       currentBed: row.bed_id
         ? {
             bedId: row.bed_id,
@@ -916,7 +934,44 @@ router.put(
   },
 )
 
+// PUT /api/structure/rooms/:id/female - Установить/снять признак женской комнаты
+router.put(
+  '/rooms/:id/female',
+  requireAdmin,
+  validateUUID('id'),
+  logAdminAction('toggle_room_female'),
+  async (req, res) => {
+    try {
+      const { id } = req.params
+      const { female } = req.body
+      if (typeof female !== 'boolean') {
+        return res.status(400).json({ error: 'Поле female должно быть boolean' })
+      }
+
+      const result = await query(
+        'UPDATE rooms SET is_female = $1, updated_at = NOW() WHERE id = $2 AND is_active = true RETURNING id, room_number, is_female',
+        [female, id],
+      )
+
+      if (result.rows.length === 0) {
+        return res.status(404).json({ error: 'Комната не найдена' })
+      }
+
+      res.json({
+        message: `Комната ${result.rows[0].room_number} ${female ? 'обозначена как женская' : 'больше не женская'}`,
+        id: result.rows[0].id,
+        isFemale: result.rows[0].is_female,
+      })
+    } catch (error) {
+      console.error('Ошибка обновления признака женской комнаты:', error)
+      res.status(500).json({ error: 'Ошибка обновления признака женской комнаты' })
+    }
+  },
+)
+
 module.exports = router
 
 // Инициализация миграции поля is_reserved при первом импорте роутера
 ensureRoomsReservationColumn().catch(() => {})
+// Инициализация миграции поля is_female при первом импорте роутера
+ensureRoomsFemaleColumn().catch(() => {})

@@ -162,7 +162,7 @@ router.get('/', requireAdmin, async (req, res) => {
       LEFT JOIN groups g ON u.group_id = g.id AND g.is_active = true
       ${whereClause}
     `,
-      params.slice(0, -2),
+      params,
     )
 
     const users = result.rows.map((user) => ({
