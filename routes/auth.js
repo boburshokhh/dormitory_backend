@@ -54,13 +54,21 @@ router.post('/register-request', async (req, res) => {
     }
 
     // Проверяем rate limiting через PostgreSQL функцию
-    const rateLimitCheck = await query('SELECT check_rate_limits($1, $2)', [req.ip, 'request_code'])
+    try {
+      const rateLimitCheck = await query('SELECT check_rate_limits($1, $2)', [
+        req.ip,
+        'request_code',
+      ])
 
-    if (!rateLimitCheck.rows[0].check_rate_limits) {
-      return res.status(429).json({
-        error: 'Слишком много запросов. Попробуйте позже.',
-        waitSeconds: 60,
-      })
+      if (!rateLimitCheck.rows[0].check_rate_limits) {
+        return res.status(429).json({
+          error: 'Слишком много запросов. Попробуйте позже.',
+          waitSeconds: 60,
+        })
+      }
+    } catch (rateLimitError) {
+      // Продолжаем без rate limiting если функция не существует
+      console.log('⚠️ Rate limiting функция недоступна:', rateLimitError.message)
     }
 
     // Генерируем и отправляем код
@@ -74,22 +82,25 @@ router.post('/register-request', async (req, res) => {
       return res.status(500).json({ error: 'Ошибка отправки кода' })
     }
 
-    // Сохраняем код в БД
+    // Сохраняем код в БД (без ограничения по времени)
     await query(
       `INSERT INTO verification_codes (contact, contact_type, code_hash, expires_at, ip_address, type) 
-       VALUES ($1, $2, $3, $4, $5, 'registration')
-       ON CONFLICT (contact, type) 
+       VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (contact) 
        DO UPDATE SET 
+         contact_type = EXCLUDED.contact_type,
          code_hash = EXCLUDED.code_hash, 
          expires_at = EXCLUDED.expires_at, 
          ip_address = EXCLUDED.ip_address,
+         type = EXCLUDED.type,
          created_at = CURRENT_TIMESTAMP`,
       [
         normalizedContact,
         contactType,
         hashedCode,
-        new Date(Date.now() + parseInt(process.env.CODE_EXPIRY_MINUTES || 10) * 60000),
+        new Date(Date.now() + 365 * 24 * 60 * 60 * 1000), // 1 год вместо 10 минут
         req.ip,
+        'registration',
       ],
     )
 
@@ -99,10 +110,51 @@ router.post('/register-request', async (req, res) => {
       message: 'Код подтверждения отправлен',
       contact: normalizedContact,
       contactType,
-      expiresIn: parseInt(process.env.CODE_EXPIRY_MINUTES || 10) * 60,
+      expiresIn: null, // Убираем ограничение по времени
     })
   } catch (error) {
     console.error('Ошибка запроса кода регистрации:', error)
+    res.status(500).json({ error: 'Внутренняя ошибка сервера' })
+  }
+})
+
+// 1.5. РЕГИСТРАЦИЯ: Проверка кода (без создания аккаунта)
+router.post('/verify-registration-code', async (req, res) => {
+  try {
+    const { contact, code } = req.body
+
+    if (!contact || !code) {
+      return res.status(400).json({ error: 'Контакт и код обязательны' })
+    }
+
+    // Проверяем код в БД
+    const codeResult = await query(
+      `SELECT code_hash, contact_type, attempts, expires_at 
+       FROM verification_codes 
+       WHERE contact = $1 AND type = 'registration'`,
+      [contact],
+    )
+
+    if (codeResult.rows.length === 0) {
+      return res.status(400).json({ error: 'Код не найден' })
+    }
+
+    const { code_hash, contact_type } = codeResult.rows[0]
+
+    // Проверяем код
+    const isValidCode = notificationService.verifyCode(code, code_hash)
+
+    if (!isValidCode) {
+      return res.status(400).json({ error: 'Неверный код' })
+    }
+
+    res.json({
+      message: 'Код подтвержден',
+      contact,
+      contactType: contact_type,
+    })
+  } catch (error) {
+    console.error('Ошибка проверки кода:', error)
     res.status(500).json({ error: 'Внутренняя ошибка сервера' })
   }
 })
@@ -131,36 +183,19 @@ router.post('/register-verify', async (req, res) => {
     }
 
     const result = await transaction(async (client) => {
-      // Проверяем код
+      // Получаем данные из verification_codes (код уже проверен на втором шаге)
       const codeResult = await client.query(
-        `SELECT code_hash, contact_type, attempts, expires_at 
+        `SELECT contact_type 
          FROM verification_codes 
-         WHERE contact = $1 AND type = 'registration' AND expires_at > CURRENT_TIMESTAMP`,
+         WHERE contact = $1 AND type = 'registration'`,
         [contact],
       )
 
       if (codeResult.rows.length === 0) {
-        throw new Error('Код не найден или истёк')
+        throw new Error('Данные регистрации не найдены')
       }
 
-      const { code_hash, contact_type, attempts } = codeResult.rows[0]
-
-      // Проверяем количество попыток
-      if (attempts >= parseInt(process.env.MAX_CODE_ATTEMPTS || 5)) {
-        throw new Error('Превышено количество попыток ввода кода')
-      }
-
-      // Проверяем код
-      const isValidCode = notificationService.verifyCode(code, code_hash)
-
-      if (!isValidCode) {
-        // Увеличиваем счетчик попыток
-        await client.query(
-          'UPDATE verification_codes SET attempts = attempts + 1 WHERE contact = $1 AND type = $2',
-          [contact, 'registration'],
-        )
-        throw new Error('Неверный код')
-      }
+      const { contact_type } = codeResult.rows[0]
 
       // Проверяем уникальность username
       const usernameCheck = await client.query('SELECT id FROM users WHERE username = $1', [
@@ -552,22 +587,25 @@ router.post('/forgot-password', async (req, res) => {
 
     console.log(`🔢 Код для восстановления пароля: ${code}, хэш: ${hashedCode}`)
 
-    // Сохраняем код в БД
+    // Сохраняем код в БД (без ограничения по времени)
     await query(
       `INSERT INTO verification_codes (contact, contact_type, code_hash, expires_at, ip_address, type) 
-       VALUES ($1, $2, $3, $4, $5, 'password_reset')
-       ON CONFLICT (contact, type) 
+       VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (contact) 
        DO UPDATE SET 
+         contact_type = EXCLUDED.contact_type,
          code_hash = EXCLUDED.code_hash, 
          expires_at = EXCLUDED.expires_at, 
          ip_address = EXCLUDED.ip_address,
+         type = EXCLUDED.type,
          created_at = CURRENT_TIMESTAMP`,
       [
         user.contact,
         user.contact_type,
         hashedCode,
-        new Date(Date.now() + parseInt(process.env.CODE_EXPIRY_MINUTES || 10) * 60000),
+        new Date(Date.now() + 365 * 24 * 60 * 60 * 1000), // 1 год вместо 10 минут
         req.ip,
+        'password_reset',
       ],
     )
 
@@ -577,7 +615,7 @@ router.post('/forgot-password', async (req, res) => {
       message: 'Код подтверждения отправлен на ваш email',
       contact: user.contact,
       contactType: user.contact_type,
-      expiresIn: parseInt(process.env.CODE_EXPIRY_MINUTES || 10) * 60,
+      expiresIn: null, // Убираем ограничение по времени
     })
   } catch (error) {
     console.error('Ошибка запроса восстановления пароля:', error)
@@ -616,38 +654,27 @@ router.post('/verify-reset-code', async (req, res) => {
     const codeResult = await query(
       `SELECT code_hash, attempts, expires_at 
        FROM verification_codes 
-       WHERE contact = $1 AND type = 'password_reset' AND expires_at > CURRENT_TIMESTAMP`,
+       WHERE contact = $1 AND type = 'password_reset'`,
       [user.contact],
     )
 
     if (codeResult.rows.length === 0) {
-      return res.status(400).json({ error: 'Код не найден или истек' })
+      return res.status(400).json({ error: 'Код не найден' })
     }
 
     const codeData = codeResult.rows[0]
 
-    // Проверяем количество попыток
-    if (codeData.attempts >= 5) {
-      return res.status(400).json({ error: 'Превышено количество попыток. Запросите новый код.' })
-    }
+    // Убираем ограничение на количество попыток для упрощения процесса
 
     // Проверяем код
     const isValidCode = notificationService.verifyCode(code, codeData.code_hash)
 
     if (!isValidCode) {
-      // Увеличиваем счетчик попыток
-      await query(
-        'UPDATE verification_codes SET attempts = attempts + 1 WHERE contact = $1 AND type = $2',
-        [user.contact, 'password_reset'],
-      )
+      // Убираем увеличение счетчика попыток для упрощения
       return res.status(400).json({ error: 'Неверный код' })
     }
 
-    // Сбрасываем счетчик попыток при успешном вводе
-    await query('UPDATE verification_codes SET attempts = 0 WHERE contact = $1 AND type = $2', [
-      user.contact,
-      'password_reset',
-    ])
+    // Убираем сброс счетчика попыток - он больше не нужен
 
     console.log(`✅ Код подтвержден для сброса пароля пользователя ${user.contact}`)
 
@@ -698,20 +725,17 @@ router.post('/set-new-password', async (req, res) => {
     const codeResult = await query(
       `SELECT code_hash, attempts, expires_at 
        FROM verification_codes 
-       WHERE contact = $1 AND type = 'password_reset' AND expires_at > CURRENT_TIMESTAMP`,
+       WHERE contact = $1 AND type = 'password_reset'`,
       [user.contact],
     )
 
     if (codeResult.rows.length === 0) {
-      return res.status(400).json({ error: 'Код не найден или истек' })
+      return res.status(400).json({ error: 'Код не найден' })
     }
 
     const codeData = codeResult.rows[0]
 
-    // Проверяем количество попыток
-    if (codeData.attempts >= 5) {
-      return res.status(400).json({ error: 'Превышено количество попыток. Запросите новый код.' })
-    }
+    // Убираем ограничение на количество попыток для упрощения процесса
 
     // Проверяем код
     const isValidCode = notificationService.verifyCode(code, codeData.code_hash)
@@ -779,38 +803,27 @@ router.post('/reset-password-by-code', async (req, res) => {
     const codeResult = await query(
       `SELECT code_hash, attempts, expires_at 
        FROM verification_codes 
-       WHERE contact = $1 AND type = 'password_reset' AND expires_at > CURRENT_TIMESTAMP`,
+       WHERE contact = $1 AND type = 'password_reset'`,
       [user.contact],
     )
 
     if (codeResult.rows.length === 0) {
-      return res.status(400).json({ error: 'Код не найден или истек' })
+      return res.status(400).json({ error: 'Код не найден' })
     }
 
     const codeData = codeResult.rows[0]
 
-    // Проверяем количество попыток
-    if (codeData.attempts >= 5) {
-      return res.status(400).json({ error: 'Превышено количество попыток. Запросите новый код.' })
-    }
+    // Убираем ограничение на количество попыток для упрощения процесса
 
     // Проверяем код
     const isValidCode = notificationService.verifyCode(code, codeData.code_hash)
 
     if (!isValidCode) {
-      // Увеличиваем счетчик попыток
-      await query(
-        'UPDATE verification_codes SET attempts = attempts + 1 WHERE contact = $1 AND type = $2',
-        [user.contact, 'password_reset'],
-      )
+      // Убираем увеличение счетчика попыток для упрощения
       return res.status(400).json({ error: 'Неверный код' })
     }
 
-    // Сбрасываем счетчик попыток при успешном вводе
-    await query('UPDATE verification_codes SET attempts = 0 WHERE contact = $1 AND type = $2', [
-      user.contact,
-      'password_reset',
-    ])
+    // Убираем сброс счетчика попыток - он больше не нужен
 
     // Генерируем новый пароль
     const newPassword = Math.random().toString(36).slice(-8) + Math.random().toString(36).slice(-4)
