@@ -8,6 +8,7 @@ const {
   validateUUID,
   logAdminAction,
 } = require('../middleware/auth')
+const { formatDateFromDB } = require('../utils/dateUtils')
 
 const router = express.Router()
 
@@ -182,7 +183,7 @@ router.get('/', requireAdmin, async (req, res) => {
       isVerified: user.is_verified,
       region: user.region,
       address: user.address,
-      birthDate: user.birth_date,
+      birthDate: formatDateFromDB(user.birth_date),
       gender: user.gender,
       parentPhone: user.parent_phone,
       avatarFileName: user.avatar_file_name,
@@ -542,7 +543,7 @@ router.get('/:id', validateUUID('id'), requireAdmin, async (req, res) => {
       updatedAt: user.updated_at,
       contact: user.contact,
       contactType: user.contact_type,
-      birthDate: user.birth_date,
+      birthDate: formatDateFromDB(user.birth_date),
       gender: user.gender,
       region: user.region,
       address: user.address,

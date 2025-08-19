@@ -52,6 +52,8 @@ const buildApplicationFilters = (userRole, userId, filters = {}) => {
       has_social_protection,
       search,
       gender,
+      date_from,
+      date_to,
     } = filters
 
     if (status) conditions['a.status'] = status
@@ -90,9 +92,31 @@ const buildApplicationFilters = (userRole, userId, filters = {}) => {
 
     const { whereClause, paramCount } = buildWhereClause(conditions, params, rawConditions)
 
-    // Поиск по ФИО/Email/студ. номеру (ILIKE) — добавляем после, чтобы нумерация параметров была корректной
+    // Фильтрация по диапазону дат подачи заявки (добавляем после buildWhereClause)
     let finalWhere = whereClause
     let finalParamCount = paramCount
+
+    if (date_from && String(date_from).trim()) {
+      const fromDate = String(date_from).trim()
+      // Валидация формата даты YYYY-MM-DD
+      if (/^\d{4}-\d{2}-\d{2}$/.test(fromDate)) {
+        finalWhere += ` AND DATE(a.submission_date) >= $${finalParamCount + 1}`
+        params.push(fromDate)
+        finalParamCount += 1
+      }
+    }
+
+    if (date_to && String(date_to).trim()) {
+      const toDate = String(date_to).trim()
+      // Валидация формата даты YYYY-MM-DD
+      if (/^\d{4}-\d{2}-\d{2}$/.test(toDate)) {
+        finalWhere += ` AND DATE(a.submission_date) <= $${finalParamCount + 1}`
+        params.push(toDate)
+        finalParamCount += 1
+      }
+    }
+
+    // Поиск по ФИО/Email/студ. номеру (ILIKE) — добавляем после дат
     if (search && String(search).trim().length > 0) {
       const term = `%${String(search).trim()}%`
       finalWhere += ` AND (u.first_name ILIKE $${finalParamCount + 1} OR u.last_name ILIKE $${finalParamCount + 1} OR u.email ILIKE $${finalParamCount + 1} OR u.student_id ILIKE $${finalParamCount + 1})`
@@ -124,6 +148,8 @@ const QUERIES = {
       u.last_name, 
       u.email, 
       u.student_id as student_number,
+      u.region,
+      u.gender,
       g.name as group_name, 
       g.course,
       -- Признак социальной защиты (наличие активного файла соответствующего типа)
@@ -407,6 +433,14 @@ const buildOrderByClause = (sortBy, sortOrder) => {
 // Построение LIMIT OFFSET клаузулы
 const buildPaginationClause = (limit, offset, paramCount) => {
   try {
+    // Если limit = 'ALL', не применяем пагинацию
+    if (limit === 'ALL' || limit === 'all') {
+      return {
+        clause: '',
+        params: [],
+      }
+    }
+    
     return {
       clause: `LIMIT $${paramCount + 1} OFFSET $${paramCount + 2}`,
       params: [limit, offset],

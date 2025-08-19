@@ -2,6 +2,7 @@ const express = require('express')
 const { query } = require('../config/database')
 const { authenticateToken } = require('../middleware/auth')
 const filesController = require('../controllers/filesController')
+const { formatDateFromDB } = require('../utils/dateUtils')
 
 const router = express.Router()
 
@@ -50,7 +51,7 @@ router.get('/', async (req, res) => {
       profile: {
         ...profile,
         group: groupInfo,
-        birth_date: profile.birth_date ? profile.birth_date.toISOString().split('T')[0] : null,
+        birth_date: formatDateFromDB(profile.birth_date),
       },
     })
   } catch (error) {
@@ -309,9 +310,7 @@ router.put('/', async (req, res) => {
       profile: {
         ...updatedProfile,
         group: groupInfo,
-        birth_date: updatedProfile.birth_date
-          ? updatedProfile.birth_date.toISOString().split('T')[0]
-          : null,
+        birth_date: formatDateFromDB(updatedProfile.birth_date),
       },
     })
   } catch (error) {
@@ -885,23 +884,19 @@ router.get('/accommodation', async (req, res) => {
 // GET /api/profile/regions - Получить список регионов для выбора
 router.get('/regions', async (req, res) => {
   try {
-    // Статичный список регионов Узбекистана
-    const regions = [
-      'Андижанская область',
-      'Бухарская область',
-      'Джизакская область',
-      'Кашкадарьинская область',
-      'Навоийская область',
-      'Наманганская область',
-      'Самаркандская область',
-      'Сурхандарьинская область',
-      'Сырдарьинская область',
-      'Ташкентская область',
-      'Ферганская область',
-      'Хорезмская область',
-      'Республика Каракалпакстан',
-      'г. Ташкент',
-    ]
+    // Получаем регионы из базы данных
+    const result = await query(`
+      SELECT id, name, code 
+      FROM regions 
+      WHERE name IS NOT NULL AND name != ''
+      ORDER BY name
+    `)
+
+    const regions = result.rows.map(row => ({
+      id: row.id,
+      name: row.name,
+      code: row.code
+    }))
 
     res.json({ regions })
   } catch (error) {

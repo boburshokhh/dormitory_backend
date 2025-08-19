@@ -20,7 +20,10 @@ class ApplicationsService {
     try {
       const { whereClause, params, paramCount } = buildApplicationFilters(userRole, userId, filters)
       const { pageNum, limitNum, sortBy, sortOrder } = pagination
-      const offset = (pageNum - 1) * limitNum
+
+      // Проверяем, нужно ли применять пагинацию
+      const isAllRecords = limitNum === 'ALL' || limitNum === 'all'
+      const offset = isAllRecords ? 0 : (pageNum - 1) * parseInt(limitNum)
 
       const orderClause = buildOrderByClause(sortBy, sortOrder)
       const { clause: paginationClause, params: paginationParams } = buildPaginationClause(
@@ -41,16 +44,27 @@ class ApplicationsService {
       const applications = result.rows.map(this.formatApplicationListItem)
       const total = parseInt(countResult.rows[0].total)
 
+      // Формируем информацию о пагинации
+      let paginationInfo = {
+        page: pageNum,
+        limit: limitNum,
+        total,
+        totalPages: 1,
+        hasNextPage: false,
+        hasPrevPage: false,
+      }
+
+      // Если не "ВСЕ", то рассчитываем пагинацию
+      if (!isAllRecords) {
+        const limitNumInt = parseInt(limitNum)
+        paginationInfo.totalPages = Math.ceil(total / limitNumInt)
+        paginationInfo.hasNextPage = pageNum * limitNumInt < total
+        paginationInfo.hasPrevPage = pageNum > 1
+      }
+
       return {
         applications,
-        pagination: {
-          page: pageNum,
-          limit: limitNum,
-          total,
-          totalPages: Math.ceil(total / limitNum),
-          hasNextPage: pageNum * limitNum < total,
-          hasPrevPage: pageNum > 1,
-        },
+        pagination: paginationInfo,
       }
     } catch (error) {
       throw createDatabaseError('Ошибка получения списка заявок', 'applications', error)
@@ -575,6 +589,8 @@ class ApplicationsService {
         lastName: app.last_name,
         email: app.email,
         studentId: app.student_number,
+        region: app.region,
+        gender: app.gender,
         groupName: app.group_name,
         course: app.course,
         hasSocialProtection: app.has_social_protection === true,

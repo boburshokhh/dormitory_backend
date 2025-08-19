@@ -13,6 +13,7 @@ const {
   validateBulkReview,
   validateUUID,
 } = require('../validators/applicationValidator')
+const { getCurrentMonthRange } = require('../utils/dateUtils')
 
 class ApplicationsController {
   // GET /api/applications - Получить список заявок
@@ -22,6 +23,10 @@ class ApplicationsController {
     try {
       // Валидация параметров
       const validatedParams = validateListParams(req.query)
+
+      // Получаем текущий месяц для значений по умолчанию
+      const currentMonthRange = getCurrentMonthRange()
+
       const {
         status,
         dormitory_id,
@@ -34,6 +39,8 @@ class ApplicationsController {
         has_social_protection,
         search,
         gender,
+        date_from = currentMonthRange.from, // Используем текущий месяц по умолчанию
+        date_to = currentMonthRange.to, // Используем текущий месяц по умолчанию
       } = req.query
 
       // Фильтры
@@ -49,6 +56,8 @@ class ApplicationsController {
         has_social_protection,
         search,
         gender,
+        date_from,
+        date_to,
       }
 
       // Получаем данные через сервис

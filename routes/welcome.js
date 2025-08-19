@@ -5,7 +5,8 @@ const router = express.Router()
 router.get('/', (req, res) => {
   const welcomeData = {
     title: '🏠 API Системы управления общежитиями ГУБКИН',
-    description: 'Backend API для системы управления общежитиями Российского государственного университета нефти и газа имени И.М. Губкина',
+    description:
+      'Backend API для системы управления общежитиями Российского государственного университета нефти и газа имени И.М. Губкина',
     version: '1.0.0',
     status: 'active',
     timestamp: new Date().toISOString(),
@@ -20,8 +21,8 @@ router.get('/', (req, res) => {
           'POST /api/auth/refresh - Обновление токена',
           'POST /api/auth/logout - Выход из системы',
           'POST /api/auth/forgot-password - Запрос сброса пароля',
-          'POST /api/auth/reset-password - Сброс пароля'
-        ]
+          'POST /api/auth/reset-password - Сброс пароля',
+        ],
       },
       dormitories: {
         description: 'Управление общежитиями',
@@ -31,8 +32,8 @@ router.get('/', (req, res) => {
           'GET /api/dormitories/:id - Информация об общежитии',
           'POST /api/dormitories - Создать общежитие (админ)',
           'PUT /api/dormitories/:id - Обновить общежитие (админ)',
-          'DELETE /api/dormitories/:id - Удалить общежитие (админ)'
-        ]
+          'DELETE /api/dormitories/:id - Удалить общежитие (админ)',
+        ],
       },
       structure: {
         description: 'Структура общежитий',
@@ -41,8 +42,8 @@ router.get('/', (req, res) => {
           'GET /api/blocks - Блоки',
           'GET /api/rooms - Комнаты',
           'GET /api/beds - Кровати',
-          'GET /api/structure - Полная структура'
-        ]
+          'GET /api/structure - Полная структура',
+        ],
       },
       applications: {
         description: 'Заявки на заселение',
@@ -50,8 +51,8 @@ router.get('/', (req, res) => {
           'GET /api/applications - Получить заявки',
           'POST /api/applications - Создать заявку',
           'PUT /api/applications/:id/approve - Одобрить заявку (админ)',
-          'PUT /api/applications/:id/reject - Отклонить заявку (админ)'
-        ]
+          'PUT /api/applications/:id/reject - Отклонить заявку (админ)',
+        ],
       },
       users: {
         description: 'Управление пользователями',
@@ -59,61 +60,58 @@ router.get('/', (req, res) => {
           'GET /api/users - Получить пользователей (админ)',
           'GET /api/users/:id - Получить пользователя',
           'PUT /api/users/:id - Обновить пользователя',
-          'DELETE /api/users/:id - Удалить пользователя (админ)'
-        ]
+          'DELETE /api/users/:id - Удалить пользователя (админ)',
+        ],
       },
       profile: {
         description: 'Профиль пользователя',
         routes: [
           'GET /api/profile - Получить профиль',
           'PUT /api/profile - Обновить профиль',
-          'POST /api/profile/change-password - Изменить пароль'
-        ]
+          'POST /api/profile/change-password - Изменить пароль',
+        ],
       },
       files: {
         description: 'Управление файлами',
         routes: [
           'POST /api/files/upload - Загрузить файл',
           'GET /api/files/:filename - Получить файл',
-          'DELETE /api/files/:filename - Удалить файл'
-        ]
+          'DELETE /api/files/:filename - Удалить файл',
+        ],
       },
       system: {
         description: 'Системные маршруты',
         routes: [
           'GET /api/health - Проверка состояния',
           'GET /api/logs - Логи (админ)',
-          'GET /api/groups - Группы'
-        ]
-      }
+          'GET /api/groups - Группы',
+        ],
+      },
     },
     authentication: {
       type: 'JWT Bearer Token',
       header: 'Authorization: Bearer <your_jwt_token>',
-      note: 'Все защищенные маршруты требуют JWT токен в заголовке Authorization'
+      note: 'Все защищенные маршруты требуют JWT токен в заголовке Authorization',
     },
     rate_limiting: {
       window: '15 минут',
       max_requests: '1000 запросов с одного IP',
-      message: 'Слишком много запросов с этого IP, попробуйте позже.'
+      message: 'Слишком много запросов с этого IP, попробуйте позже.',
     },
     cors: {
-      allowed_origins: [
-        'http://localhost:5173',
-        'https://dormitory-gubkin.netlify.app'
-      ],
-      credentials: true
+      allowed_origins: ['http://localhost:5173', 'https://dormitory-gubkin.netlify.app'],
+      credentials: true,
     },
     documentation: {
       readme: '/README.md',
       github: 'https://github.com/gubkin-university/dormitory-management',
-      issues: 'https://github.com/gubkin-university/dormitory-management/issues'
+      issues: 'https://github.com/gubkin-university/dormitory-management/issues',
     },
     contact: {
       university: 'Российский государственный университет нефти и газа имени И.М. Губкина',
       email: 'support@gubkin.ru',
-      website: 'https://www.gubkin.ru'
-    }
+      website: 'https://www.gubkin.ru',
+    },
   }
 
   // Если запрос с заголовком Accept: application/json, возвращаем JSON
@@ -328,14 +326,18 @@ router.get('/', (req, res) => {
         
         <div class="info-card">
             <h3>📚 Доступные API Endpoints</h3>
-            ${Object.entries(welcomeData.endpoints).map(([key, endpoint]) => `
+            ${Object.entries(welcomeData.endpoints)
+              .map(
+                ([key, endpoint]) => `
                 <div class="endpoint-group">
                     <h4>${endpoint.description}</h4>
                     <ul class="endpoint-list">
-                        ${endpoint.routes.map(route => `<li>${route}</li>`).join('')}
+                        ${endpoint.routes.map((route) => `<li>${route}</li>`).join('')}
                     </ul>
                 </div>
-            `).join('')}
+            `,
+              )
+              .join('')}
         </div>
         
         <div class="contact-info">
@@ -356,4 +358,4 @@ router.get('/', (req, res) => {
   res.send(html)
 })
 
-module.exports = router 
+module.exports = router

@@ -10,6 +10,7 @@ const {
 } = require('../constants/applicationConstants')
 
 const { createValidationError } = require('../utils/errorHandler')
+const { isValidDateString } = require('../utils/dateUtils')
 
 // Валидация параметров пагинации и сортировки
 const validateListParams = (query) => {
@@ -20,6 +21,8 @@ const validateListParams = (query) => {
     limit = PAGINATION.DEFAULT_LIMIT,
     sort_by = PAGINATION.DEFAULT_SORT_BY,
     sort_order = PAGINATION.DEFAULT_SORT_ORDER,
+    date_from,
+    date_to,
   } = query
 
   // Валидация статуса
@@ -35,9 +38,17 @@ const validateListParams = (query) => {
     errors.push(`Номер страницы должен быть положительным числом, получено: ${page}`)
   }
 
-  const limitNum = parseInt(limit)
-  if (isNaN(limitNum) || limitNum < 1 || limitNum > PAGINATION.MAX_LIMIT) {
-    errors.push(`Лимит должен быть числом от 1 до ${PAGINATION.MAX_LIMIT}, получено: ${limit}`)
+  // Проверяем, является ли limit значением "ALL"
+  let limitNum
+  if (limit === 'ALL' || limit === 'all') {
+    limitNum = 'ALL'
+  } else {
+    limitNum = parseInt(limit)
+    if (isNaN(limitNum) || limitNum < 1 || limitNum > PAGINATION.MAX_LIMIT) {
+      errors.push(
+        `Лимит должен быть числом от 1 до ${PAGINATION.MAX_LIMIT} или 'ALL', получено: ${limit}`,
+      )
+    }
   }
 
   // Валидация сортировки
@@ -53,6 +64,30 @@ const validateListParams = (query) => {
     )
   }
 
+  // Валидация дат фильтрации
+  let fromDate, toDate
+
+  if (date_from) {
+    if (!isValidDateString(date_from)) {
+      errors.push(`Неверный формат или значение даты "от": ${date_from}. Ожидается YYYY-MM-DD`)
+    } else {
+      fromDate = new Date(date_from)
+    }
+  }
+
+  if (date_to) {
+    if (!isValidDateString(date_to)) {
+      errors.push(`Неверный формат или значение даты "до": ${date_to}. Ожидается YYYY-MM-DD`)
+    } else {
+      toDate = new Date(date_to)
+    }
+  }
+
+  // Проверяем логику диапазона дат
+  if (fromDate && toDate && fromDate > toDate) {
+    errors.push('Дата "от" не может быть больше даты "до"')
+  }
+
   if (errors.length > 0) {
     throw createValidationError(
       `Ошибки валидации параметров запроса: ${errors.join('; ')}`,
@@ -63,7 +98,7 @@ const validateListParams = (query) => {
 
   return {
     pageNum: Math.max(1, pageNum),
-    limitNum: Math.min(PAGINATION.MAX_LIMIT, Math.max(1, limitNum)),
+    limitNum: limitNum === 'ALL' ? 'ALL' : Math.min(PAGINATION.MAX_LIMIT, Math.max(1, limitNum)),
     sortBy: VALID_SORT_FIELDS.includes(sort_by) ? sort_by : PAGINATION.DEFAULT_SORT_BY,
     sortOrder: VALID_SORT_ORDERS.includes(sort_order?.toUpperCase())
       ? sort_order.toUpperCase()
