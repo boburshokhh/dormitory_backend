@@ -79,7 +79,9 @@ const generateDormitoryDirectionPDF = async (data) => {
     const { pdfMake } = await initPdfMake()
 
     // Генерируем QR-код для верификации документа
-    const verificationUrl = `https://dormitory.gubkin.uz/verify/${data.documentId}`
+    const baseUrl = process.env.VERIFICATION_BASE_URL || 'https://dormitory-gubkin.netlify.app'
+    const verificationUrl = `${baseUrl}/verify/${data.documentId}`
+    console.log('📱 QR код URL:', verificationUrl)
     const qrCodeDataURL = await generateQRCode(verificationUrl)
 
     const docDefinition = {
@@ -416,7 +418,6 @@ class DocumentsController {
         block: student.block_number || '___',
         period: '2025-2026 учебный год.',
         contractNumber: '___',
-        documentId: `DOC-${Date.now()}-${student.id}`,
         generatedAt: new Date(),
       }
 
@@ -427,7 +428,35 @@ class DocumentsController {
         block: documentData.block,
       })
 
-      // Генерируем PDF как Buffer
+      // Сначала сохраняем документ в БД, чтобы получить реальный ID
+      const insertQuery = `
+        INSERT INTO documents (
+          student_id, document_type, file_name, file_path, file_size, 
+          mime_type, generated_by, generated_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        RETURNING *
+      `
+
+      const fileName = `dormitory-direction-${student.id}-${Date.now()}.pdf`
+      const filePath = `documents/${fileName}`
+
+      const documentResult = await query(insertQuery, [
+        studentId,
+        'dormitory_direction',
+        fileName,
+        filePath,
+        0, // Временно 0, обновим после генерации PDF
+        'application/pdf',
+        generatedBy,
+        new Date(),
+      ])
+
+      const document = documentResult.rows[0]
+
+      // Теперь добавляем реальный documentId к данным для PDF
+      documentData.documentId = document.id
+
+      // Генерируем PDF как Buffer с правильным documentId
       const pdfBuffer = await generateDormitoryDirectionPDF(documentData)
 
       // Проверяем, что pdfBuffer действительно является Buffer
@@ -438,10 +467,6 @@ class DocumentsController {
 
       console.log('PDF Buffer создан успешно, размер:', pdfBuffer.length)
 
-      // Создаем уникальное имя файла
-      const fileName = `dormitory-direction-${student.id}-${Date.now()}.pdf`
-      const filePath = `documents/${fileName}`
-
       // Загружаем в MinIO
       try {
         await uploadFile(pdfBuffer, filePath, 'application/pdf')
@@ -450,27 +475,13 @@ class DocumentsController {
         throw new Error('Ошибка сохранения файла в хранилище')
       }
 
-      // Сохраняем информацию в базу данных
-      const insertQuery = `
-        INSERT INTO documents (
-          student_id, document_type, file_name, file_path, file_size, 
-          mime_type, generated_by, generated_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-        RETURNING *
+      // Обновляем размер файла в БД
+      const updateQuery = `
+        UPDATE documents 
+        SET file_size = $1 
+        WHERE id = $2
       `
-
-      const documentResult = await query(insertQuery, [
-        studentId,
-        'dormitory_direction',
-        fileName,
-        filePath,
-        pdfBuffer.length,
-        'application/pdf',
-        generatedBy,
-        new Date(),
-      ])
-
-      const document = documentResult.rows[0]
+      await query(updateQuery, [pdfBuffer.length, document.id])
 
       // Генерируем URL для скачивания с правильным доменом
       const downloadUrl = `https://files.dormitory.gubkin.uz/upload/${filePath}`
@@ -569,112 +580,6 @@ class DocumentsController {
     }
   }
 
-  // Публичная верификация документа по QR-коду
-  async verifyDocument(req, res) {
-    try {
-      const { documentId } = req.params
-
-      console.log('Попытка верификации документа:', { documentId })
-
-      // Получаем полную информацию о документе и студенте
-      const verifyQuery = `
-        SELECT 
-          d.id, d.document_type, d.file_name, d.generated_at, d.status, d.is_active,
-          u.id as student_id, u.first_name, u.last_name, u.middle_name, u.birth_date, 
-          u.address, u.course, u.region, u.student_id as student_number,
-          g.name as group_name, g.faculty, g.speciality,
-          b.bed_number,
-          r.room_number, r.block_room_number,
-          bl.block_number,
-          f.floor_number,
-          dorm.name as dormitory_name, dorm.type as dormitory_type,
-          creator.first_name as creator_first_name, creator.last_name as creator_last_name
-        FROM documents d
-        LEFT JOIN users u ON d.student_id = u.id
-        LEFT JOIN groups g ON u.group_id = g.id AND g.is_active = true
-        LEFT JOIN beds b ON u.id = b.student_id AND b.is_active = true
-        LEFT JOIN rooms r ON b.room_id = r.id AND r.is_active = true
-        LEFT JOIN blocks bl ON r.block_id = bl.id AND bl.is_active = true
-        LEFT JOIN floors f ON r.floor_id = f.id AND f.is_active = true
-        LEFT JOIN dormitories dorm ON f.dormitory_id = dorm.id AND dorm.is_active = true
-        LEFT JOIN users creator ON d.generated_by = creator.id
-        WHERE d.id = $1 AND d.is_active = true
-      `
-
-      const result = await query(verifyQuery, [documentId])
-
-      if (result.rows.length === 0) {
-        console.log('Документ не найден или неактивен:', documentId)
-        return res.status(404).json({
-          error: 'Документ не найден',
-          message: 'Документ не существует или был удален',
-        })
-      }
-
-      const document = result.rows[0]
-
-      // Проверяем статус документа
-      if (document.status !== 'active') {
-        return res.status(410).json({
-          error: 'Документ недействителен',
-          message: 'Документ был отозван или деактивирован',
-        })
-      }
-
-      // Форматируем данные для ответа
-      const verificationData = {
-        document: {
-          id: document.id,
-          type: document.document_type,
-          fileName: document.file_name,
-          generatedAt: document.generated_at,
-          verifiedAt: new Date().toISOString(),
-        },
-        student: {
-          fullName:
-            `${document.last_name} ${document.first_name} ${document.middle_name || ''}`.trim(),
-          birthDate: document.birth_date,
-          address: document.address,
-          course: document.course,
-          group: document.group_name,
-          faculty: document.faculty,
-          speciality: document.speciality,
-          studentNumber: document.student_number,
-        },
-        accommodation: {
-          dormitory: document.dormitory_name,
-          dormitoryType: document.dormitory_type,
-          floor: document.floor_number,
-          room: document.block_room_number || document.room_number,
-          block: document.block_number,
-          bed: document.bed_number,
-        },
-        creator: {
-          name: `${document.creator_last_name} ${document.creator_first_name}`,
-        },
-        verification: {
-          isValid: true,
-          verifiedAt: new Date().toISOString(),
-          message: 'Документ подлинный и действительный',
-        },
-      }
-
-      console.log('Документ успешно верифицирован:', documentId)
-
-      res.json({
-        success: true,
-        message: 'Документ верифицирован успешно',
-        data: verificationData,
-      })
-    } catch (error) {
-      console.error('Ошибка верификации документа:', error)
-      res.status(500).json({
-        error: 'Ошибка верификации документа',
-        message: 'Не удалось проверить подлинность документа',
-      })
-    }
-  }
-
   // Удаление документа
   async deleteDocument(req, res) {
     try {
@@ -741,6 +646,165 @@ class DocumentsController {
       console.error('Ошибка удаления документа:', error)
       res.status(500).json({ error: 'Ошибка удаления документа' })
     }
+  }
+
+  // GET /api/documents/verify/:documentId - Публичная верификация документа по QR-коду
+  async verifyDocument(req, res) {
+    try {
+      const { documentId } = req.params
+
+      console.log(`🔍 Запрос верификации документа: ${documentId}`)
+      console.log(`📡 User-Agent: ${req.headers['user-agent']}`)
+      console.log(`🌐 IP: ${req.ip}`)
+
+      // Валидируем UUID формат documentId
+      const uuidPattern = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i
+
+      if (!uuidPattern.test(documentId)) {
+        console.log(`❌ Неверный формат documentId: ${documentId}`)
+        await logVerificationAttempt(
+          documentId,
+          req.ip,
+          req.headers['user-agent'],
+          false,
+          'invalid_format',
+        )
+
+        return res.status(400).json({
+          valid: false,
+          error: 'Неверный формат документа',
+          message:
+            'ID документа имеет неправильный формат. Убедитесь, что вы правильно отсканировали QR-код.',
+        })
+      }
+
+      // Получаем данные документа с информацией о студенте
+      const sqlQuery = `
+        SELECT 
+          d.id, d.document_type, d.file_name, d.generated_at, d.status, d.is_active,
+          d.file_path, d.file_size, d.mime_type,
+          u.first_name, u.last_name, u.middle_name, u.student_id,
+          g.name as group_name, g.faculty,
+          admin.first_name as admin_first_name, admin.last_name as admin_last_name
+        FROM documents d
+        LEFT JOIN users u ON d.student_id = u.id
+        LEFT JOIN groups g ON u.group_id = g.id
+        LEFT JOIN users admin ON d.generated_by = admin.id
+        WHERE d.id = $1 
+          AND d.document_type = 'dormitory_direction'
+      `
+
+      const result = await query(sqlQuery, [documentId])
+
+      if (result.rows.length === 0) {
+        console.log(`❌ Документ не найден: ${documentId}`)
+        await logVerificationAttempt(
+          documentId,
+          req.ip,
+          req.headers['user-agent'],
+          false,
+          'not_found',
+        )
+
+        return res.status(404).json({
+          valid: false,
+          error: 'Документ не найден',
+          message: 'Документ с указанным ID не существует в системе или был удален.',
+        })
+      }
+
+      const document = result.rows[0]
+
+      console.log(`📋 Статус документа:`, {
+        is_active: document.is_active,
+        status: document.status,
+        document_type: document.document_type,
+      })
+
+      if (!document.is_active) {
+        console.log(`❌ Документ неактивен: ${documentId}`)
+        await logVerificationAttempt(
+          documentId,
+          req.ip,
+          req.headers['user-agent'],
+          false,
+          'inactive',
+        )
+
+        return res.status(410).json({
+          valid: false,
+          error: 'Документ недействителен',
+          message: 'Документ был деактивирован или удален из системы.',
+        })
+      }
+
+      // Успешная верификация
+      console.log(`✅ Документ успешно верифицирован: ${documentId}`)
+      await logVerificationAttempt(documentId, req.ip, req.headers['user-agent'], true, 'success')
+
+      // Генерируем URL для просмотра документа
+      const documentUrl = `https://files.dormitory.gubkin.uz/upload/${document.file_path}`
+
+      return res.json({
+        valid: true,
+        documentId,
+        document: {
+          id: document.id,
+          type: document.document_type,
+          fileName: document.file_name,
+          fileSize: document.file_size,
+          documentUrl,
+          generatedAt: document.generated_at,
+          student: {
+            fullName:
+              `${document.last_name} ${document.first_name} ${document.middle_name || ''}`.trim(),
+            studentId: document.student_id,
+            group: document.group_name,
+            faculty: document.faculty,
+          },
+          generatedBy: {
+            fullName: `${document.admin_last_name || ''} ${document.admin_first_name || ''}`.trim(),
+          },
+        },
+      })
+    } catch (error) {
+      console.error('Ошибка верификации документа:', error)
+      await logVerificationAttempt(
+        req.params.documentId,
+        req.ip,
+        req.headers['user-agent'],
+        false,
+        'server_error',
+      )
+
+      res.status(500).json({
+        valid: false,
+        error: 'Ошибка сервера',
+        message: 'Не удалось проверить подлинность документа. Попробуйте позже.',
+      })
+    }
+  }
+}
+
+// Логирование попыток верификации (вынесено из класса)
+const logVerificationAttempt = async (
+  documentId,
+  ipAddress,
+  userAgent,
+  success,
+  errorType = null,
+) => {
+  try {
+    const insertQuery = `
+      INSERT INTO document_verifications (
+        document_id, ip_address, user_agent, verification_result, error_type, verification_at
+      ) VALUES ($1, $2, $3, $4, $5, NOW())
+    `
+
+    await query(insertQuery, [documentId, ipAddress, userAgent, success, errorType])
+  } catch (error) {
+    console.error('Ошибка логирования верификации:', error)
+    // Не прерываем основной процесс из-за ошибки логирования
   }
 }
 

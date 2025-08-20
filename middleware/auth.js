@@ -113,6 +113,21 @@ const validateUUID = (paramName) => {
   }
 }
 
+// Middleware для валидации documentId (специальный формат DOC-timestamp-uuid)
+const validateDocumentId = (req, res, next) => {
+  const documentId = req.params.documentId
+  // Разрешаем любой непустой documentId для публичной верификации
+  // Валидация формата будет происходить в контроллере с детальными сообщениями об ошибках
+  if (!documentId || documentId.trim() === '') {
+    return res.status(400).json({
+      error: 'Неверный формат документа',
+      message: 'ID документа не может быть пустым',
+    })
+  }
+
+  next()
+}
+
 // Middleware для логирования действий администраторов
 const logAdminAction = (action) => {
   return async (req, res, next) => {
@@ -169,6 +184,7 @@ module.exports = {
   requireStudent,
   requireOwnershipOrAdmin,
   validateUUID,
+  validateDocumentId,
   logAdminAction,
   generateToken,
   generateRefreshToken,

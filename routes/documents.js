@@ -5,11 +5,18 @@ const {
   authenticateToken,
   requireAdmin,
   validateUUID,
+  validateDocumentId,
   logAdminAction,
 } = require('../middleware/auth')
+const { verificationLimiter } = require('../middleware/rateLimit')
 
 // Публичная верификация документа по QR-коду (без аутентификации)
-router.get('/verify/:documentId', validateUUID('documentId'), documentsController.verifyDocument)
+router.get(
+  '/verify/:documentId',
+  verificationLimiter,
+  validateDocumentId,
+  documentsController.verifyDocument,
+)
 
 // Генерация документа "НАПРАВЛЕНИЕ на размещение в ДПС" для студента
 router.post(
