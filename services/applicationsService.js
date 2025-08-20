@@ -578,6 +578,7 @@ class ApplicationsService {
   formatApplicationListItem(app) {
     return {
       id: app.id,
+      applicationNumber: app.application_number,
       status: app.status,
       submissionDate: app.submission_date,
       academicYear: app.academic_year,

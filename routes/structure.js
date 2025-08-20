@@ -289,6 +289,18 @@ router.get('/students', requireAdmin, async (req, res) => {
   try {
     const { search, course, group, available_only = 'false', approved_only = 'false' } = req.query
 
+    // Поддержка фильтра по типу общежития из заявки (ДПС 1/2)
+    // Принимаем значения: '1' | '2' | 'type_1' | 'type_2'
+    const requestedDormitoryType = req.query.dormitory_type
+    let normalizedDormitoryType = null
+    if (requestedDormitoryType) {
+      if (requestedDormitoryType === '1' || requestedDormitoryType === 'type_1') {
+        normalizedDormitoryType = 'type_1'
+      } else if (requestedDormitoryType === '2' || requestedDormitoryType === 'type_2') {
+        normalizedDormitoryType = 'type_2'
+      }
+    }
+
     let whereClause = "WHERE u.role = 'student' AND u.is_active = true"
     const params = []
     let paramIndex = 1
@@ -325,6 +337,13 @@ router.get('/students', requireAdmin, async (req, res) => {
       paramIndex++
     }
 
+    // Если запрошен фильтр по типу общежития из заявки (ДПС), ограничиваем по типу dormitories, связанному с заявкой
+    if (normalizedDormitoryType) {
+      whereClause += ` AND ad.type = $${paramIndex}`
+      params.push(normalizedDormitoryType)
+      paramIndex++
+    }
+
     const result = await query(
       `SELECT DISTINCT ON (u.id) u.id, u.first_name, u.last_name, u.middle_name, 
               u.student_id, u.group_name, u.course, u.phone, u.email, u.gender,
@@ -340,6 +359,7 @@ router.get('/students', requireAdmin, async (req, res) => {
        LEFT JOIN floors f2 ON bl.floor_id = f2.id
        LEFT JOIN dormitories d ON (f.dormitory_id = d.id OR f2.dormitory_id = d.id)
        LEFT JOIN applications a ON u.id = a.student_id AND a.status = 'approved'
+       LEFT JOIN dormitories ad ON a.dormitory_id = ad.id
        ${whereClause}
        ORDER BY u.id, a.submission_date DESC NULLS LAST
        LIMIT 100`,
@@ -400,7 +420,7 @@ router.put(
 
       // Проверяем существование койки
       const bedResult = await query(
-        `SELECT b.*, r.room_number, r.is_reserved as room_is_reserved, d.name as dormitory_name
+        `SELECT b.*, r.room_number, r.is_reserved as room_is_reserved, d.name as dormitory_name, d.type as dormitory_type
          FROM beds b
          JOIN rooms r ON b.room_id = r.id
          LEFT JOIN floors f ON r.floor_id = f.id
@@ -454,6 +474,29 @@ router.put(
 
       if (existingBedResult.rows.length > 0) {
         return res.status(409).json({ error: 'Студент уже занимает другую койку' })
+      }
+
+      // Проверяем соответствие типа общежития (ДПС) по последней одобренной заявке
+      const appRes = await query(
+        `SELECT a.id, a.submission_date, ad.type as dormitory_type
+         FROM applications a
+         LEFT JOIN dormitories ad ON a.dormitory_id = ad.id
+         WHERE a.student_id = $1 AND a.status = 'approved'
+         ORDER BY a.submission_date DESC NULLS LAST
+         LIMIT 1`,
+        [studentId],
+      )
+
+      if (appRes.rows.length > 0) {
+        const appDormType = appRes.rows[0].dormitory_type // 'type_1' | 'type_2' | null
+        const bedDormType = bed.dormitory_type // 'type_1' | 'type_2'
+        if (appDormType && bedDormType && appDormType !== bedDormType) {
+          const appTypeLabel = appDormType === 'type_1' ? 'ДПС 1' : 'ДПС 2'
+          const bedTypeLabel = bedDormType === 'type_1' ? 'ДПС 1' : 'ДПС 2'
+          return res.status(400).json({
+            error: `Несоответствие типа общежития: заявка студента на ${appTypeLabel}, а выбранная койка находится в ${bedTypeLabel}`,
+          })
+        }
       }
 
       // Назначаем студента на койку

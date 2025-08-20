@@ -42,7 +42,13 @@ const BULK_OPERATIONS = {
   MAX_BULK_SIZE: 50,
 }
 
-const VALID_SORT_FIELDS = ['submission_date', 'status', 'academic_year', 'priority_score']
+const VALID_SORT_FIELDS = [
+  'submission_date',
+  'status',
+  'academic_year',
+  'priority_score',
+  'application_number',
+]
 
 const VALID_SORT_ORDERS = ['ASC', 'DESC']
 

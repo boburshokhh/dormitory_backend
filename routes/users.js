@@ -36,7 +36,10 @@ router.get('/', requireAdmin, async (req, res) => {
       has_accommodation,
     } = req.query
 
-    const offset = (page - 1) * limit
+    // Обработка limit для случая 'ALL'
+    const isAllRecords = limit === 'ALL' || limit === 'all'
+    const limitNum = isAllRecords ? 1000000 : parseInt(limit) // Большое число для 'ALL'
+    const offset = isAllRecords ? 0 : (page - 1) * limitNum
 
     let whereClause = 'WHERE 1=1'
     const params = []
@@ -131,7 +134,7 @@ router.get('/', requireAdmin, async (req, res) => {
         f2.id as floor_id_2, f2.floor_number as floor_number_2,
         d.id as dormitory_id, d.name as dormitory_name, d.type as dormitory_type,
         -- Информация о группе
-        g.id as group_id_ref, g.faculty, g.speciality
+        g.id as group_id_ref, g.name as group_name_ref, g.faculty, g.speciality
       FROM users u
       LEFT JOIN files f ON u.avatar_file_id = f.id AND f.status = 'active' AND f.deleted_at IS NULL
       LEFT JOIN beds b ON u.id = b.student_id AND b.is_active = true
@@ -143,9 +146,9 @@ router.get('/', requireAdmin, async (req, res) => {
       LEFT JOIN groups g ON u.group_id = g.id AND g.is_active = true
       ${whereClause}
       ORDER BY u.created_at DESC
-      LIMIT $${++paramCount} OFFSET $${++paramCount}
+      ${isAllRecords ? '' : `LIMIT $${++paramCount} OFFSET $${++paramCount}`}
     `,
-      [...params, limit, offset],
+      isAllRecords ? params : [...params, limitNum, offset],
     )
 
     // Подсчет общего количества
@@ -194,6 +197,7 @@ router.get('/', requireAdmin, async (req, res) => {
       group: user.group_id_ref
         ? {
             id: user.group_id_ref,
+            name: user.group_name_ref,
             faculty: user.faculty,
             speciality: user.speciality,
           }

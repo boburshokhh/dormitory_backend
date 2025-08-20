@@ -136,6 +136,7 @@ const QUERIES = {
   GET_APPLICATIONS_LIST: `
     SELECT 
       a.id, 
+      a.application_number,
       a.status, 
       a.submission_date,
       a.academic_year, 
@@ -415,6 +416,12 @@ const QUERIES = {
 // Построение ORDER BY клаузулы
 const buildOrderByClause = (sortBy, sortOrder) => {
   try {
+    // Если сортируем по номеру заявки, то не применяем приоритет по статусу
+    if (sortBy === 'application_number') {
+      return `ORDER BY a.application_number ${sortOrder}`
+    }
+
+    // Для остальных полей применяем приоритет по статусу
     return `
       ORDER BY 
         CASE 
@@ -440,7 +447,7 @@ const buildPaginationClause = (limit, offset, paramCount) => {
         params: [],
       }
     }
-    
+
     return {
       clause: `LIMIT $${paramCount + 1} OFFSET $${paramCount + 2}`,
       params: [limit, offset],
