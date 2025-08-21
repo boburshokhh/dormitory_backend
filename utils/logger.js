@@ -17,13 +17,13 @@ const customFormat = winston.format.combine(
   winston.format.json(),
   winston.format.printf(({ timestamp, level, message, ...meta }) => {
     let log = `${timestamp} [${level.toUpperCase()}]: ${message}`
-    
+
     if (Object.keys(meta).length > 0) {
       log += ` ${JSON.stringify(meta)}`
     }
-    
+
     return log
-  })
+  }),
 )
 
 // Цветной формат для консоли
@@ -32,13 +32,13 @@ const consoleFormat = winston.format.combine(
   winston.format.timestamp({ format: 'HH:mm:ss' }),
   winston.format.printf(({ timestamp, level, message, ...meta }) => {
     let log = `${timestamp} [${level}]: ${message}`
-    
+
     if (Object.keys(meta).length > 0) {
       log += ` ${JSON.stringify(meta)}`
     }
-    
+
     return log
-  })
+  }),
 )
 
 // Транспорты для файлов
@@ -50,9 +50,9 @@ const fileTransports = [
     zippedArchive: true,
     maxSize: '20m',
     maxFiles: '14d',
-    level: 'info'
+    level: 'info',
   }),
-  
+
   // Логи ошибок
   new winston.transports.DailyRotateFile({
     filename: path.join(logDir, 'error-%DATE%.log'),
@@ -60,9 +60,9 @@ const fileTransports = [
     zippedArchive: true,
     maxSize: '20m',
     maxFiles: '30d',
-    level: 'error'
+    level: 'error',
   }),
-  
+
   // Логи HTTP запросов
   new winston.transports.DailyRotateFile({
     filename: path.join(logDir, 'http-%DATE%.log'),
@@ -70,8 +70,8 @@ const fileTransports = [
     zippedArchive: true,
     maxSize: '20m',
     maxFiles: '7d',
-    level: 'info'
-  })
+    level: 'info',
+  }),
 ]
 
 // Создаем основной логгер
@@ -82,8 +82,8 @@ const logger = winston.createLogger({
     ...fileTransports,
     new winston.transports.Console({
       format: consoleFormat,
-      level: process.env.NODE_ENV === 'production' ? 'warn' : 'debug'
-    })
+      level: process.env.NODE_ENV === 'production' ? 'warn' : 'debug',
+    }),
   ],
   exceptionHandlers: [
     new winston.transports.DailyRotateFile({
@@ -91,8 +91,8 @@ const logger = winston.createLogger({
       datePattern: 'YYYY-MM-DD',
       zippedArchive: true,
       maxSize: '20m',
-      maxFiles: '30d'
-    })
+      maxFiles: '30d',
+    }),
   ],
   rejectionHandlers: [
     new winston.transports.DailyRotateFile({
@@ -100,51 +100,42 @@ const logger = winston.createLogger({
       datePattern: 'YYYY-MM-DD',
       zippedArchive: true,
       maxSize: '20m',
-      maxFiles: '30d'
-    })
-  ]
+      maxFiles: '30d',
+    }),
+  ],
 })
 
 // Специальный логгер для HTTP запросов
 const httpLogger = winston.createLogger({
   level: 'info',
-  format: winston.format.combine(
-    winston.format.timestamp(),
-    winston.format.json()
-  ),
+  format: winston.format.combine(winston.format.timestamp(), winston.format.json()),
   transports: [
     new winston.transports.DailyRotateFile({
       filename: path.join(logDir, 'http-%DATE%.log'),
       datePattern: 'YYYY-MM-DD',
       zippedArchive: true,
       maxSize: '20m',
-      maxFiles: '7d'
-    })
-  ]
+      maxFiles: '7d',
+    }),
+  ],
 })
 
 // Специальный логгер для безопасности
 const securityLogger = winston.createLogger({
   level: 'warn',
-  format: winston.format.combine(
-    winston.format.timestamp(),
-    winston.format.json()
-  ),
+  format: winston.format.combine(winston.format.timestamp(), winston.format.json()),
   transports: [
     new winston.transports.DailyRotateFile({
       filename: path.join(logDir, 'security-%DATE%.log'),
       datePattern: 'YYYY-MM-DD',
       zippedArchive: true,
       maxSize: '20m',
-      maxFiles: '90d'
+      maxFiles: '90d',
     }),
     new winston.transports.Console({
-      format: winston.format.combine(
-        winston.format.colorize(),
-        winston.format.simple()
-      )
-    })
-  ]
+      format: winston.format.combine(winston.format.colorize(), winston.format.simple()),
+    }),
+  ],
 })
 
 // Утилиты для логирования
@@ -159,7 +150,7 @@ const logUtils = {
       ip: req.ip,
       userAgent: req.headers['user-agent'],
       userId: req.user?.id || 'anonymous',
-      userRole: req.user?.role || 'anonymous'
+      userRole: req.user?.role || 'anonymous',
     }
 
     if (res.statusCode >= 400) {
@@ -175,7 +166,7 @@ const logUtils = {
     securityLogger.warn('Security Event', {
       event,
       ...details,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     })
 
     // Отправляем события безопасности в Telegram
@@ -184,7 +175,7 @@ const logUtils = {
     } catch (telegramError) {
       logger.warn('Telegram Security Alert Failed', {
         originalEvent: event,
-        telegramError: telegramError.message
+        telegramError: telegramError.message,
       })
     }
   },
@@ -195,7 +186,7 @@ const logUtils = {
     logger.error('Application Error', {
       message: error.message,
       stack: error.stack,
-      ...context
+      ...context,
     })
 
     // Отправляем критические ошибки в Telegram
@@ -206,7 +197,7 @@ const logUtils = {
         // Логируем ошибку отправки в Telegram, но не останавливаем выполнение
         logger.warn('Telegram Notification Failed', {
           originalError: error.message,
-          telegramError: telegramError.message
+          telegramError: telegramError.message,
         })
       }
     }
@@ -217,7 +208,7 @@ const logUtils = {
     logger.info('Business Event', {
       event,
       ...data,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     })
   },
 
@@ -226,14 +217,14 @@ const logUtils = {
     logger.info('Performance', {
       operation,
       duration: `${duration}ms`,
-      ...details
+      ...details,
     })
-  }
+  },
 }
 
 module.exports = {
   logger,
   httpLogger,
   securityLogger,
-  logUtils
-} 
+  logUtils,
+}

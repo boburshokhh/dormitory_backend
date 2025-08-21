@@ -185,15 +185,11 @@ const generateDormitoryDirectionPDF = async (data) => {
         {
           columns: [
             {
-              width: '70%',
+              width: '80%',
               stack: [
                 {
-                  text: 'Руководитель офиса регистратора ________________________',
+                  text: 'Руководитель офиса регистратора ________________',
                   margin: [0, 0, 0, 5],
-                },
-                {
-                  text: ' ',
-                  margin: [0, 0, 0, 10],
                 },
                 {
                   text: 'М.П.',
@@ -202,7 +198,7 @@ const generateDormitoryDirectionPDF = async (data) => {
               ],
             },
             {
-              width: '30%',
+              width: '20%',
               stack: [
                 {
                   text: '_____/подпись/',
@@ -510,23 +506,47 @@ class DocumentsController {
     }
   }
 
-  // Получение списка документов студента
+  // Получение списка документов студента (только для текущего размещения)
   async getStudentDocuments(req, res) {
     try {
       const { studentId } = req.params
 
+      // Сначала получаем время последнего назначения койки
+      const bedQuery = `
+        SELECT assigned_at 
+        FROM beds 
+        WHERE student_id = $1 AND is_active = true AND is_occupied = true
+        ORDER BY assigned_at DESC 
+        LIMIT 1
+      `
+      const bedResult = await query(bedQuery, [studentId])
+
+      if (bedResult.rows.length === 0) {
+        // Если нет активного размещения, возвращаем пустой список
+        console.log('Нет активного размещения для студента:', studentId)
+        return res.json({ documents: [] })
+      }
+
+      const assignedAt = bedResult.rows[0].assigned_at
+      console.log('Время последнего назначения койки:', assignedAt)
+
+      // Получаем только документы, созданные после назначения текущей койки
       const dbQuery = `
         SELECT 
           d.id, d.document_type, d.file_name, d.file_path, d.file_size, d.mime_type,
-          d.generated_at, d.created_at, d.status,
+          d.generated_at, d.created_at, d.status, d.is_active,
           u.first_name, u.last_name, u.middle_name
         FROM documents d
         LEFT JOIN users u ON d.generated_by = u.id
-        WHERE d.student_id = $1 AND d.is_active = true
-        ORDER BY d.created_at DESC
+        WHERE d.student_id = $1 
+          AND d.is_active = true 
+          AND d.document_type = 'dormitory_direction'
+          AND d.generated_at >= $2
+        ORDER BY d.generated_at DESC
+        LIMIT 1
       `
 
-      const result = await query(dbQuery, [studentId])
+      const result = await query(dbQuery, [studentId, assignedAt])
 
       // Генерируем URL для каждого документа с правильным доменом
       const documents = result.rows.map((doc) => {
@@ -537,6 +557,7 @@ class DocumentsController {
         }
       })
 
+      console.log(`Возвращено документов для студента ${studentId}:`, documents.length)
       res.json({ documents })
     } catch (error) {
       console.error('Ошибка получения документов:', error)
@@ -645,6 +666,103 @@ class DocumentsController {
     } catch (error) {
       console.error('Ошибка удаления документа:', error)
       res.status(500).json({ error: 'Ошибка удаления документа' })
+    }
+  }
+
+  // Деактивация документов студента, связанных с текущим назначением койки
+  async deactivateStudentDocuments(req, res) {
+    try {
+      const { studentId } = req.params
+      const userId = req.user.id
+
+      console.log('Попытка деактивации документов студента:', { studentId, userId })
+
+      // Проверяем, что студент существует
+      const studentQuery = `SELECT id, first_name, last_name FROM users WHERE id = $1 AND role = 'student'`
+      const studentResult = await query(studentQuery, [studentId])
+
+      if (studentResult.rows.length === 0) {
+        console.log('Студент не найден:', studentId)
+        return res.status(404).json({ error: 'Студент не найден' })
+      }
+
+      const student = studentResult.rows[0]
+      console.log('Студент найден:', {
+        studentId,
+        name: `${student.last_name} ${student.first_name}`,
+      })
+
+      // Находим время последнего назначения койки для этого студента
+      const bedQuery = `
+        SELECT assigned_at 
+        FROM beds 
+        WHERE student_id = $1 AND is_active = true AND is_occupied = true
+        ORDER BY assigned_at DESC 
+        LIMIT 1
+      `
+      const bedResult = await query(bedQuery, [studentId])
+
+      if (bedResult.rows.length === 0) {
+        console.log('Активное назначение койки не найдено для студента:', studentId)
+        // Если нет активного назначения, деактивируем все активные документы
+        const updateAllQuery = `
+          UPDATE documents 
+          SET is_active = false, updated_at = NOW() 
+          WHERE student_id = $1 AND is_active = true AND document_type = 'dormitory_direction'
+        `
+        const updateAllResult = await query(updateAllQuery, [studentId])
+        console.log(
+          'Деактивировано всех документов (нет активной койки):',
+          updateAllResult.rowCount,
+        )
+
+        return res.json({
+          success: true,
+          message: `Деактивировано ${updateAllResult.rowCount} документов студента (нет активной койки)`,
+          deactivatedCount: updateAllResult.rowCount,
+        })
+      }
+
+      const assignedAt = bedResult.rows[0].assigned_at
+      console.log('Время назначения койки:', assignedAt)
+
+      // Деактивируем документы, созданные ПОСЛЕ назначения на текущую койку
+      // Это гарантирует, что мы деактивируем только документы, связанные с текущим размещением
+      const updateQuery = `
+        UPDATE documents 
+        SET is_active = false, updated_at = NOW() 
+        WHERE student_id = $1 
+          AND is_active = true 
+          AND document_type = 'dormitory_direction'
+          AND generated_at >= $2
+      `
+      const updateResult = await query(updateQuery, [studentId, assignedAt])
+
+      console.log('Деактивировано документов текущего назначения:', updateResult.rowCount)
+
+      // Логируем какие именно документы были деактивированы
+      const deactivatedDocsQuery = `
+        SELECT id, file_name, generated_at 
+        FROM documents 
+        WHERE student_id = $1 
+          AND is_active = false 
+          AND document_type = 'dormitory_direction'
+          AND generated_at >= $2
+        ORDER BY generated_at DESC
+      `
+      const deactivatedDocs = await query(deactivatedDocsQuery, [studentId, assignedAt])
+      console.log('Деактивированные документы:', deactivatedDocs.rows)
+
+      res.json({
+        success: true,
+        message: `Деактивировано ${updateResult.rowCount} документов текущего назначения`,
+        deactivatedCount: updateResult.rowCount,
+        assignedAt: assignedAt,
+        deactivatedDocuments: deactivatedDocs.rows,
+      })
+    } catch (error) {
+      console.error('Ошибка деактивации документов студента:', error)
+      res.status(500).json({ error: 'Ошибка деактивации документов студента' })
     }
   }
 

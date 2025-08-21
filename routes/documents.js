@@ -54,4 +54,14 @@ router.delete(
   documentsController.deleteDocument,
 )
 
+// Деактивация всех документов студента (при освобождении койки)
+router.put(
+  '/student/:studentId/deactivate',
+  authenticateToken,
+  requireAdmin,
+  validateUUID('studentId'),
+  logAdminAction('deactivate_student_documents'),
+  documentsController.deactivateStudentDocuments,
+)
+
 module.exports = router
