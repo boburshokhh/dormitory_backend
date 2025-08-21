@@ -30,7 +30,7 @@ const handleApplicationError = async (error, req, res, context = 'Unknown') => {
   }
 
   // Логируем ошибку с контекстом
-  logUtils.logError(error, {
+  await logUtils.logError(error, {
     context,
     statusCode,
     message,

@@ -152,6 +152,12 @@ const routesToLoad = [
     description: 'Documents routes',
     critical: false,
   },
+  {
+    key: 'testTelegram',
+    path: './routes/test-telegram',
+    description: 'Telegram Test routes',
+    critical: false,
+  },
 ]
 
 // Загружаем каждый маршрут отдельно
@@ -436,6 +442,7 @@ const routeMappings = [
   { path: '/api/groups', route: 'groups', name: 'Groups' },
   { path: '/api/files', route: 'files', name: 'Files' },
   { path: '/api/documents', route: 'documents', name: 'Documents' },
+  { path: '/api/test', route: 'testTelegram', name: 'Telegram Test' },
 ]
 
 for (const mapping of routeMappings) {
@@ -588,6 +595,17 @@ async function startServer() {
 
     // Инициализируем MinIO
     await initializeMinIO()
+
+    // Инициализируем Telegram уведомления
+    const telegramService = safeRequire('./services/telegramService', 'Telegram Service')
+    if (telegramService) {
+      console.log('🤖 Инициализация Telegram уведомлений...')
+      try {
+        await telegramService.testConnection()
+      } catch (error) {
+        console.warn('⚠️ Ошибка инициализации Telegram:', error.message)
+      }
+    }
 
     // Запускаем серверы
     if (sslOptions && isProduction) {

@@ -113,19 +113,20 @@ const requestLogger = (req, res, next) => {
 }
 
 // Улучшенное логирование ошибок
-const errorLogger = (err, req, res, next) => {
+const errorLogger = async (err, req, res, next) => {
   // Логируем ошибку
-  logUtils.logError(err, {
+  await logUtils.logError(err, {
     route: `${req.method} ${req.originalUrl}`,
     userId: req.user?.id || 'anonymous',
     userRole: req.user?.role || 'anonymous',
     ip: req.ip,
     userAgent: req.headers['user-agent'],
+    statusCode: err.status || err.statusCode || 500,
   })
 
   // Логируем ошибки безопасности
   if (err.name === 'UnauthorizedError' || err.status === 401) {
-    securityLogger.warn('Authentication Error', {
+    await logUtils.logSecurityEvent('Authentication Error', {
       ip: req.ip,
       url: req.originalUrl,
       method: req.method,

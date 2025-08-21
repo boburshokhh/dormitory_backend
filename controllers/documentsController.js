@@ -117,7 +117,7 @@ const generateDormitoryDirectionPDF = async (data) => {
 
         // Дата рождения
         {
-          text: `год рождения ${formatBirthDate(data.birthDate)}`,
+          text: `дата рождения ${formatBirthDate(data.birthDate)}`,
           margin: [0, 0, 0, 8],
         },
 
@@ -157,7 +157,7 @@ const generateDormitoryDirectionPDF = async (data) => {
 
         // Основание
         {
-          text: `Основание: ${data.basis || 'иногородний / первокурсник / нуждается в жилье'}`,
+          text: `Основание: иногородний`,
           margin: [0, 0, 0, 8],
         },
 
@@ -188,7 +188,7 @@ const generateDormitoryDirectionPDF = async (data) => {
               width: '70%',
               stack: [
                 {
-                  text: 'Руководитель офиса регистратора Н. Хусанбаева',
+                  text: 'Руководитель офиса регистратора ________________________',
                   margin: [0, 0, 0, 5],
                 },
                 {
@@ -406,7 +406,7 @@ class DocumentsController {
         course: student.course || '___',
         groupNumber: student.group_name || '___',
         studyForm: 'очная',
-        basis: 'иногородний / первокурсник',
+        basis: 'иногородний',
         dormitoryNumber:
           student.dormitory_type === 'type_1'
             ? '1'

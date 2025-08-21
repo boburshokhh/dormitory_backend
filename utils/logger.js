@@ -2,6 +2,7 @@ const winston = require('winston')
 require('winston-daily-rotate-file')
 const path = require('path')
 const fs = require('fs')
+const telegramService = require('../services/telegramService')
 
 // Создаем папку для логов если её нет
 const logDir = path.join(__dirname, '..', 'logs')
@@ -169,21 +170,46 @@ const logUtils = {
   },
 
   // Логирование ошибок безопасности
-  logSecurityEvent: (event, details) => {
+  logSecurityEvent: async (event, details) => {
+    // Логируем в файл как обычно
     securityLogger.warn('Security Event', {
       event,
       ...details,
       timestamp: new Date().toISOString()
     })
+
+    // Отправляем события безопасности в Telegram
+    try {
+      await telegramService.sendSecurityAlert(event, details)
+    } catch (telegramError) {
+      logger.warn('Telegram Security Alert Failed', {
+        originalEvent: event,
+        telegramError: telegramError.message
+      })
+    }
   },
 
   // Логирование ошибок приложения
-  logError: (error, context = {}) => {
+  logError: async (error, context = {}) => {
+    // Логируем в файл как обычно
     logger.error('Application Error', {
       message: error.message,
       stack: error.stack,
       ...context
     })
+
+    // Отправляем критические ошибки в Telegram
+    if (error.name !== 'ValidationError' && context.statusCode >= 500) {
+      try {
+        await telegramService.sendErrorNotification(error, context)
+      } catch (telegramError) {
+        // Логируем ошибку отправки в Telegram, но не останавливаем выполнение
+        logger.warn('Telegram Notification Failed', {
+          originalError: error.message,
+          telegramError: telegramError.message
+        })
+      }
+    }
   },
 
   // Логирование бизнес-логики
