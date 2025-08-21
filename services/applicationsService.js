@@ -1,6 +1,6 @@
 const { query, transaction } = require('../config/database')
 const { getFileUrl } = require('../config/fileStorage')
-const { DORMITORY_TYPES } = require('../constants/applicationConstants')
+const { DORMITORY_TYPES, SEMESTERS } = require('../constants/applicationConstants')
 const {
   buildApplicationFilters,
   buildOrderByClause,
@@ -132,7 +132,10 @@ class ApplicationsService {
             : `${currentYear - 1}-${currentYear}`
 
         // Семестр: если август-январь, то 1 семестр, иначе 2 семестр
-        const semester = (currentMonth >= 8 && currentMonth <= 12) || currentMonth === 1 ? 1 : 2
+        const semester =
+          (currentMonth >= 8 && currentMonth <= 12) || currentMonth === 1
+            ? SEMESTERS.FIRST
+            : SEMESTERS.SECOND
 
         // Проверяем наличие активной заявки
         await this.checkExistingApplication(client, userId, academicYear, semester)
