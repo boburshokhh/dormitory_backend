@@ -19,9 +19,6 @@ const verificationLimiter = rateLimit({
     // Можно добавить логику для пропуска определенных IP
     return false
   },
-  onLimitReached: (req, res, options) => {
-    console.log(`⚠️ Rate limit достигнут для IP: ${req.ip}, URL: ${req.originalUrl}`)
-  },
 })
 
 // Более строгий rate limiter для попыток с неверными ID

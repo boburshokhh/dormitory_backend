@@ -322,6 +322,43 @@ const generateDormitoryDirectionPDF = async (data) => {
 }
 
 class DocumentsController {
+  // Получение всех документов с информацией о студентах
+  async getAllDocuments(req, res) {
+    try {
+      const dbQuery = `
+        SELECT 
+          d.id, d.student_id, d.document_type, d.file_name, d.file_path, d.file_size, 
+          d.mime_type, d.generated_by, d.generated_at, d.created_at, d.updated_at, d.status, d.is_active,
+          u.first_name, u.last_name, u.middle_name,
+          g.name as group_name, g.faculty,
+          admin.first_name as admin_first_name, admin.last_name as admin_last_name
+        FROM documents d
+        LEFT JOIN users u ON d.student_id = u.id
+        LEFT JOIN groups g ON u.group_id = g.id
+        LEFT JOIN users admin ON d.generated_by = admin.id
+        WHERE d.is_active = true
+        ORDER BY d.created_at DESC
+      `
+
+      const result = await query(dbQuery)
+
+      // Генерируем URL для каждого документа
+      const documents = result.rows.map((doc) => {
+        const downloadUrl = `https://files.dormitory.gubkin.uz/upload/${doc.file_path}`
+        return {
+          ...doc,
+          downloadUrl,
+        }
+      })
+
+      console.log(`Возвращено документов: ${documents.length}`)
+      res.json({ documents })
+    } catch (error) {
+      console.error('Ошибка получения всех документов:', error)
+      res.status(500).json({ error: 'Ошибка получения документов' })
+    }
+  }
+
   // Генерация и сохранение документа "НАПРАВЛЕНИЕ на размещение в ДПС"
   async generateDormitoryDirection(req, res) {
     try {
