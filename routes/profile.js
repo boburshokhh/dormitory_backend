@@ -460,7 +460,16 @@ router.post(
   filesController.getProfileUploadMiddleware().array('files', 10),
   filesController.handleMulterError,
   async (req, res) => {
+    const startTime = Date.now()
+    const requestTimeout = 120000 // 2 минуты таймаут для всего запроса
+
+    // Устанавливаем таймаут для ответа
+    req.setTimeout(requestTimeout)
+    res.setTimeout(requestTimeout)
+
     try {
+      console.log('🔄 Начало обработки submit-with-files запроса')
+
       const {
         first_name,
         last_name,
@@ -564,13 +573,6 @@ router.post(
       // Если профиль уже заполнен, это режим редактирования
       const isEditMode = existingProfile.rows[0]?.is_profile_filled
 
-      // В режиме редактирования не нужно проверять, что профиль уже заполнен
-      // if (isEditMode) {
-      //   return res.status(400).json({
-      //     error: 'Профиль уже был отправлен ранее',
-      //   })
-      // }
-
       // Дополнительные валидации
       // Валидация даты рождения
       const birthDate = new Date(birth_date)
@@ -621,10 +623,14 @@ router.post(
         })
       }
 
-      // Начинаем транзакцию
+      console.log('✅ Валидация завершена, начинаем транзакцию')
+
+      // Начинаем транзакцию с таймаутом
       await query('BEGIN')
 
       try {
+        console.log('🔄 Обновляем профиль пользователя')
+
         // 1. Обновляем профиль пользователя
         const updateResult = await query(
           `
@@ -661,6 +667,8 @@ router.post(
           throw new Error('Не удалось обновить профиль')
         }
 
+        console.log('✅ Профиль обновлен, обрабатываем файлы')
+
         // 2. Обрабатываем файлы (новые и существующие)
         const filesService = require('../services/filesService')
 
@@ -669,6 +677,8 @@ router.post(
 
         // Обрабатываем новые файлы
         if (files && files.length > 0) {
+          console.log(`📁 Обрабатываем ${files.length} новых файлов`)
+
           // Создаем модифицированный массив файлов с правильными типами
           const filesWithTypes = files.map((file, index) => {
             const fileType = fileTypes[index] || 'document'
@@ -693,6 +703,8 @@ router.post(
 
           uploadResults = newUploadResults
           allFileIds = uploadResults.map((result) => result.id).filter(Boolean) // Убираем null/undefined
+
+          console.log(`✅ Загружено ${uploadResults.length} файлов`)
         }
 
         // Добавляем существующие файлы (убираем дубликаты)
@@ -722,6 +734,8 @@ router.post(
 
         // 3. Активируем все файлы (новые и существующие)
         if (allFileIds.length > 0) {
+          console.log(`🔄 Активируем ${allFileIds.length} файлов`)
+
           // Убираем дубликаты из массива и фильтруем пустые значения
           const uniqueFileIds = [...new Set(allFileIds)].filter((id) => id && id.trim())
 
@@ -737,10 +751,15 @@ router.post(
           if (uniqueFileIds.length > 0) {
             await filesService.activateFiles(uniqueFileIds, req.user.id, 'profile', req.user.id)
           }
+
+          console.log('✅ Файлы активированы')
         }
 
         // Коммитим транзакцию
         await query('COMMIT')
+
+        const totalTime = Date.now() - startTime
+        console.log(`✅ Запрос завершен успешно за ${totalTime}ms`)
 
         res.json({
           success: true,
@@ -752,19 +771,42 @@ router.post(
             uploadedFiles: uploadResults,
             filesCount: uploadResults.length,
             isEditMode: isEditMode,
+            processingTime: totalTime,
           },
         })
       } catch (innerError) {
         // Откатываем транзакцию при ошибке
-        await query('ROLLBACK')
+        try {
+          await query('ROLLBACK')
+          console.log('🔄 Транзакция откачена из-за ошибки')
+        } catch (rollbackError) {
+          console.error('❌ Ошибка при откате транзакции:', rollbackError.message)
+        }
         throw innerError
       }
     } catch (error) {
-      console.error('Ошибка отправки профиля с файлами:', error)
+      const totalTime = Date.now() - startTime
+      console.error(`❌ Ошибка отправки профиля с файлами (${totalTime}ms):`, error)
 
-      res.status(500).json({
-        error: 'Ошибка отправки профиля с файлами',
+      // Определяем тип ошибки для более информативного ответа
+      let statusCode = 500
+      let errorMessage = 'Ошибка отправки профиля с файлами'
+
+      if (error.message.includes('Transaction timeout')) {
+        statusCode = 408
+        errorMessage = 'Превышено время ожидания обработки запроса. Попробуйте еще раз.'
+      } else if (error.message.includes('timeout')) {
+        statusCode = 408
+        errorMessage = 'Превышено время ожидания. Попробуйте еще раз.'
+      } else if (error.message.includes('connection')) {
+        statusCode = 503
+        errorMessage = 'Сервис временно недоступен. Попробуйте позже.'
+      }
+
+      res.status(statusCode).json({
+        error: errorMessage,
         details: error.message,
+        processingTime: totalTime,
       })
     }
   },
@@ -892,10 +934,10 @@ router.get('/regions', async (req, res) => {
       ORDER BY name
     `)
 
-    const regions = result.rows.map(row => ({
+    const regions = result.rows.map((row) => ({
       id: row.id,
       name: row.name,
-      code: row.code
+      code: row.code,
     }))
 
     res.json({ regions })

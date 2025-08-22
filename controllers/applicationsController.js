@@ -188,8 +188,11 @@ class ApplicationsController {
   // POST /api/applications - Создать новую заявку
   async createApplication(req, res) {
     const context = { function: 'createApplication', actionType: 'application_submit' }
+    const startTime = Date.now()
 
     try {
+      console.log('🔄 Начало обработки создания заявки')
+
       // Проверяем роль пользователя
       if (req.user.role !== 'student') {
         throw createPermissionError('подача заявок', 'Только студенты могут подавать заявки')
@@ -197,9 +200,13 @@ class ApplicationsController {
 
       // Валидация входных данных
       const validatedData = validateCreateApplication(req.body)
+      console.log('✅ Данные валидированы')
 
       // Создаем заявку через сервис
       const result = await applicationsService.createApplication(req.user.id, validatedData)
+
+      const totalTime = Date.now() - startTime
+      console.log(`✅ Заявка создана успешно за ${totalTime}ms`)
 
       res.status(201).json({
         success: true,
@@ -209,9 +216,17 @@ class ApplicationsController {
           status: result.status,
           submissionDate: result.submission_date,
           createdAt: result.created_at,
+          processingTime: totalTime,
         },
       })
     } catch (error) {
+      const totalTime = Date.now() - startTime
+      console.error(`❌ Ошибка создания заявки (${totalTime}ms):`, error.message)
+
+      // Добавляем информацию о времени обработки в контекст
+      context.processingTime = totalTime
+      context.userId = req.user.id
+
       await handleApplicationError(error, req, res, context)
     }
   }

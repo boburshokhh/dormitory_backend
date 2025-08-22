@@ -27,6 +27,15 @@ const handleApplicationError = async (error, req, res, context = 'Unknown') => {
   } else if (error.message.includes('permission') || error.message.includes('access')) {
     statusCode = 403
     message = 'Недостаточно прав доступа'
+  } else if (error.message.includes('timeout') || error.message.includes('Transaction timeout')) {
+    statusCode = 408
+    message = 'Превышено время ожидания обработки запроса'
+  } else if (error.message.includes('connection') || error.message.includes('network')) {
+    statusCode = 503
+    message = 'Сервис временно недоступен'
+  } else if (error.message.includes('duplicate') || error.message.includes('already exists')) {
+    statusCode = 409
+    message = 'Данная запись уже существует'
   }
 
   // Логируем ошибку с контекстом
@@ -44,6 +53,9 @@ const handleApplicationError = async (error, req, res, context = 'Unknown') => {
     requestBody: req.body,
     requestParams: req.params,
     requestQuery: req.query,
+    processingTime: context.processingTime,
+    errorCode: error.code,
+    errorType: error.name,
   })
 
   // Логируем ошибки безопасности
@@ -55,6 +67,7 @@ const handleApplicationError = async (error, req, res, context = 'Unknown') => {
       url: req.originalUrl,
       method: req.method,
       error: error.message,
+      processingTime: context.processingTime,
     })
   } else if (statusCode === 401) {
     securityLogger.warn('Unauthorized Access', {
@@ -62,17 +75,41 @@ const handleApplicationError = async (error, req, res, context = 'Unknown') => {
       url: req.originalUrl,
       method: req.method,
       error: error.message,
+      processingTime: context.processingTime,
+    })
+  } else if (statusCode >= 500) {
+    // Логируем серверные ошибки отдельно
+    securityLogger.error('Server Error', {
+      userId: req.user?.id,
+      userRole: req.user?.role,
+      ip: req.ip,
+      url: req.originalUrl,
+      method: req.method,
+      error: error.message,
+      processingTime: context.processingTime,
+      errorCode: error.code,
+      errorType: error.name,
     })
   }
 
-  res.status(statusCode).json({
+  // Формируем ответ с дополнительной информацией
+  const response = {
     error: message,
     ...(process.env.NODE_ENV === 'development' && {
       details: error.message,
       stack: error.stack,
       context,
+      errorCode: error.code,
+      errorType: error.name,
     }),
-  })
+  }
+
+  // Добавляем время обработки если доступно
+  if (context.processingTime) {
+    response.processingTime = context.processingTime
+  }
+
+  res.status(statusCode).json(response)
 }
 
 // Создание конкретных ошибок

@@ -8,10 +8,15 @@ const pool = new Pool({
   database: process.env.DB_NAME || 'gubkin_dormitory',
   password: process.env.DB_PASSWORD || '1234bobur$',
   port: process.env.DB_PORT || 5432,
-  max: 20, // максимум соединений в пуле
-  idleTimeoutMillis: 30000, // время ожидания закрытия неактивного соединения
-  connectionTimeoutMillis: 5000, // увеличиваем время ожидания подключения
+  max: 30, // Увеличиваем максимум соединений в пуле
+  min: 5, // Минимальное количество соединений
+  idleTimeoutMillis: 60000, // Увеличиваем время ожидания закрытия неактивного соединения
+  connectionTimeoutMillis: 10000, // Увеличиваем время ожидания подключения
+  acquireTimeoutMillis: 30000, // Таймаут получения соединения из пула
   ssl: false,
+  // Дополнительные настройки для стабильности
+  allowExitOnIdle: false, // Не закрывать приложение при отсутствии активных соединений
+  maxUses: 7500, // Максимальное количество использований соединения перед пересозданием
 })
 
 // Обработка событий пула
@@ -43,20 +48,44 @@ const query = async (text, params) => {
 // Функция для выполнения транзакций
 const transaction = async (callback) => {
   const client = await pool.connect()
+  const transactionTimeout = 60000 // 60 секунд таймаут для транзакций
+
   try {
     await client.query('BEGIN')
     console.log('🔄 Транзакция начата')
 
-    const result = await callback(client)
+    // Устанавливаем таймаут для транзакции
+    await client.query(`SET LOCAL statement_timeout = ${transactionTimeout}`)
+
+    const result = await Promise.race([
+      callback(client),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Transaction timeout')), transactionTimeout),
+      ),
+    ])
 
     await client.query('COMMIT')
     console.log('✅ Транзакция завершена успешно')
 
     return result
   } catch (error) {
-    await client.query('ROLLBACK')
-    console.log('🔄 Транзакция отменена')
+    try {
+      await client.query('ROLLBACK')
+      console.log('🔄 Транзакция отменена')
+    } catch (rollbackError) {
+      console.error('❌ Ошибка при откате транзакции:', rollbackError.message)
+    }
+
     console.error('❌ Ошибка транзакции:', error.message)
+
+    // Логируем детали ошибки для отладки
+    if (error.code) {
+      console.error('📋 Код ошибки PostgreSQL:', error.code)
+    }
+    if (error.detail) {
+      console.error('📋 Детали ошибки:', error.detail)
+    }
+
     throw error
   } finally {
     client.release()

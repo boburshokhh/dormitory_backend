@@ -116,7 +116,12 @@ class ApplicationsService {
 
   // Создание новой заявки
   async createApplication(userId, applicationData) {
+    const startTime = Date.now()
+    const operationTimeout = 45000 // 45 секунд таймаут для операции
+
     try {
+      console.log('🔄 Начало создания заявки для пользователя:', userId)
+
       return await transaction(async (client) => {
         const { dormitoryId, documents, notes } = applicationData
 
@@ -137,14 +142,19 @@ class ApplicationsService {
             ? SEMESTERS.FIRST
             : SEMESTERS.SECOND
 
+        console.log('📅 Определены учебный год и семестр:', { academicYear, semester })
+
         // Проверяем наличие активной заявки
+        console.log('🔍 Проверяем наличие активной заявки')
         await this.checkExistingApplication(client, userId, academicYear, semester)
 
         // Получаем и проверяем информацию о студенте
+        console.log('👤 Получаем информацию о студенте')
         const studentInfo = await this.getStudentInfo(client, userId)
 
         // Проверяем общежитие если указано
         if (dormitoryId) {
+          console.log('🏠 Проверяем общежитие:', dormitoryId)
           await this.validateDormitoryForStudent(
             client,
             dormitoryId,
@@ -154,6 +164,7 @@ class ApplicationsService {
           )
         }
 
+        console.log('📝 Создаем заявку в базе данных')
         // Создаем заявку
         const applicationResult = await client.query(QUERIES.CREATE_APPLICATION, [
           userId,
@@ -164,11 +175,23 @@ class ApplicationsService {
           semester,
         ])
 
+        const totalTime = Date.now() - startTime
+        console.log(`✅ Заявка создана успешно за ${totalTime}ms`)
+
         return applicationResult.rows[0]
       })
     } catch (error) {
+      const totalTime = Date.now() - startTime
+      console.error(`❌ Ошибка создания заявки (${totalTime}ms):`, error.message)
+
       if (error.type) throw error // Если это уже ApplicationError
-      throw createDatabaseError('Ошибка создания заявки', 'applications', error)
+
+      // Добавляем дополнительную информацию об ошибке
+      const enhancedError = createDatabaseError('Ошибка создания заявки', 'applications', error)
+      enhancedError.processingTime = totalTime
+      enhancedError.userId = userId
+
+      throw enhancedError
     }
   }
 

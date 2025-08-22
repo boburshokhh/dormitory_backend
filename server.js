@@ -392,6 +392,17 @@ if (fs.existsSync(uploadsPath)) {
 try {
   app.use(clientIPMiddleware)
   app.use(requestLogger)
+
+  // Добавляем middleware для мониторинга производительности
+  const {
+    performanceMonitor,
+    memoryMonitor,
+    databasePoolMonitor,
+  } = require('./middleware/performance')
+  app.use(performanceMonitor)
+  app.use(memoryMonitor)
+  app.use(databasePoolMonitor)
+
   console.log('✅ Custom middleware настроен')
 } catch (error) {
   console.error('❌ Ошибка настройки custom middleware:', error.message)
