@@ -851,17 +851,21 @@ router.get('/accommodation', async (req, res) => {
       })
     }
 
-    // Получаем информацию о соседях по комнате
+    // Получаем информацию о соседях по комнате с аватарами
     const roommatesResult = await query(
       `
       SELECT 
         u.id, u.first_name, u.last_name, u.middle_name, u.student_id, 
         u.group_name, u.course, u.phone, u.email,
         g.name as group_full_name, g.faculty, g.speciality,
-        b.bed_number, b.assigned_at
+        b.bed_number, b.assigned_at,
+        -- Информация об аватаре
+        f.file_name as avatar_file_name,
+        f.file_type as avatar_file_type
       FROM beds b
       JOIN users u ON b.student_id = u.id
       LEFT JOIN groups g ON u.group_id = g.id AND g.is_active = true
+      LEFT JOIN files f ON u.id = f.user_id AND f.file_type = 'photo_3x4' AND f.status = 'active' AND f.deleted_at IS NULL
       WHERE b.room_id = $1 AND b.student_id != $2 AND b.is_active = true
       ORDER BY b.bed_number
     `,
@@ -883,6 +887,15 @@ router.get('/accommodation', async (req, res) => {
       assignedAt: roommate.assigned_at,
       phone: roommate.phone,
       email: roommate.email,
+      // Информация об аватаре
+      avatar: roommate.avatar_file_name
+        ? {
+            fileName: roommate.avatar_file_name,
+            fileType: roommate.avatar_file_type,
+            url: `https://files.dormitory.gubkin.uz/upload/${roommate.avatar_file_name}`,
+            fallbackUrl: `https://45.138.159.79/upload/${roommate.avatar_file_name}`,
+          }
+        : null,
     }))
 
     const accommodationInfo = {
@@ -912,6 +925,14 @@ router.get('/accommodation', async (req, res) => {
         address: accommodation.dormitory_address,
       },
     }
+
+    // Логируем информацию для отладки
+    console.log('📊 Информация о размещении:', {
+      userId: req.user.id,
+      hasAccommodation: !!accommodationInfo,
+      roommatesCount: roommates.length,
+      roommatesWithAvatars: roommates.filter((r) => r.avatar).length,
+    })
 
     res.json({
       accommodation: accommodationInfo,
