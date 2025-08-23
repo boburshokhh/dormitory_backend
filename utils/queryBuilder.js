@@ -52,6 +52,8 @@ const buildApplicationFilters = (userRole, userId, filters = {}) => {
       has_social_protection,
       search,
       gender,
+      room_assigned,
+      floor,
       date_from,
       date_to,
     } = filters
@@ -88,6 +90,34 @@ const buildApplicationFilters = (userRole, userId, filters = {}) => {
         WHERE f.user_id = u.id AND f.file_type = 'social_protection'
           AND f.status IN ('active','uploading') AND f.deleted_at IS NULL
       )`)
+    }
+
+    // Фильтр по назначению комнаты
+    if (room_assigned === 'true') {
+      rawConditions.push(`EXISTS (
+        SELECT 1 FROM beds b
+        JOIN rooms r ON b.room_id = r.id
+        JOIN floors f ON r.floor_id = f.id
+        WHERE b.student_id = u.id AND b.is_active = true AND b.is_occupied = true
+      )`)
+    } else if (room_assigned === 'false') {
+      rawConditions.push(`NOT EXISTS (
+        SELECT 1 FROM beds b
+        WHERE b.student_id = u.id AND b.is_active = true AND b.is_occupied = true
+      )`)
+    }
+
+    // Фильтр по этажу (только если комната назначена)
+    if (floor && room_assigned === 'true') {
+      rawConditions.push(`EXISTS (
+        SELECT 1 FROM beds b
+        JOIN rooms r ON b.room_id = r.id
+        JOIN floors f ON r.floor_id = f.id
+        WHERE b.student_id = u.id AND b.is_active = true AND b.is_occupied = true
+          AND f.floor_number = $${paramCount + 1}
+      )`)
+      params.push(Number(floor))
+      paramCount += 1
     }
 
     const { whereClause, paramCount } = buildWhereClause(conditions, params, rawConditions)
@@ -164,7 +194,40 @@ const QUERIES = {
       
       -- Название общежития
       d.name AS dormitory_name,
-      d.type AS dormitory_type
+      d.type AS dormitory_type,
+      
+      -- Информация о назначении комнаты
+      EXISTS (
+        SELECT 1 FROM beds b
+        WHERE b.student_id = u.id AND b.is_active = true AND b.is_occupied = true
+      ) AS room_assigned,
+      
+      -- Информация об этаже (если комната назначена)
+      (
+        SELECT f.floor_number 
+        FROM beds b
+        JOIN rooms r ON b.room_id = r.id
+        JOIN floors f ON r.floor_id = f.id
+        WHERE b.student_id = u.id AND b.is_active = true AND b.is_occupied = true
+        LIMIT 1
+      ) AS floor_number,
+      
+      -- Информация о комнате (если назначена)
+      (
+        SELECT r.room_number 
+        FROM beds b
+        JOIN rooms r ON b.room_id = r.id
+        WHERE b.student_id = u.id AND b.is_active = true AND b.is_occupied = true
+        LIMIT 1
+      ) AS room_number,
+      
+      -- Номер койки (если назначена)
+      (
+        SELECT b.bed_number 
+        FROM beds b
+        WHERE b.student_id = u.id AND b.is_active = true AND b.is_occupied = true
+        LIMIT 1
+      ) AS bed_number
 
     FROM applications a
     JOIN users u ON a.student_id = u.id

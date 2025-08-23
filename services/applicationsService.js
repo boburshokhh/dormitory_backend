@@ -623,6 +623,10 @@ class ApplicationsService {
         hasSocialProtection: app.has_social_protection === true,
       },
       dormitory: app.dormitory_name ? { name: app.dormitory_name, type: app.dormitory_type } : null,
+      roomAssigned: app.room_assigned === true,
+      floorNumber: app.floor_number || null,
+      roomNumber: app.room_number || null,
+      bedNumber: app.bed_number || null,
     }
   }
 

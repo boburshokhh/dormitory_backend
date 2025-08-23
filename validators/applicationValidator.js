@@ -23,6 +23,8 @@ const validateListParams = (query) => {
     sort_order = PAGINATION.DEFAULT_SORT_ORDER,
     date_from,
     date_to,
+    room_assigned,
+    floor,
   } = query
 
   // Валидация статуса
@@ -30,6 +32,21 @@ const validateListParams = (query) => {
     errors.push(
       `Недопустимый статус заявки: ${status}. Допустимые значения: ${VALID_STATUSES.join(', ')}`,
     )
+  }
+
+  // Валидация фильтра назначения комнаты
+  if (room_assigned && !['true', 'false'].includes(room_assigned)) {
+    errors.push(
+      `Недопустимое значение фильтра назначения комнаты: ${room_assigned}. Допустимые значения: true, false`,
+    )
+  }
+
+  // Валидация фильтра этажа
+  if (floor) {
+    const floorNum = parseInt(floor)
+    if (isNaN(floorNum) || floorNum < 1 || floorNum > 20) {
+      errors.push(`Недопустимое значение этажа: ${floor}. Допустимые значения: от 1 до 20`)
+    }
   }
 
   // Валидация пагинации

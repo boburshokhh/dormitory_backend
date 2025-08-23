@@ -39,6 +39,8 @@ class ApplicationsController {
         has_social_protection,
         search,
         gender,
+        room_assigned,
+        floor,
         date_from = currentMonthRange.from, // Используем текущий месяц по умолчанию
         date_to = currentMonthRange.to, // Используем текущий месяц по умолчанию
       } = req.query
@@ -56,6 +58,8 @@ class ApplicationsController {
         has_social_protection,
         search,
         gender,
+        room_assigned,
+        floor,
         date_from,
         date_to,
       }
