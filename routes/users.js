@@ -34,6 +34,7 @@ router.get('/', requireAdmin, async (req, res) => {
       bed_number,
       region,
       has_accommodation,
+      is_violator,
     } = req.query
 
     // Обработка limit для случая 'ALL'
@@ -117,13 +118,19 @@ router.get('/', requireAdmin, async (req, res) => {
       params.push(`%${search}%`)
     }
 
+    // Фильтр по статусу нарушителя
+    if (is_violator !== undefined) {
+      whereClause += ` AND u.is_violator = $${++paramCount}`
+      params.push(is_violator === 'true')
+    }
+
     const result = await query(
       `
       SELECT 
         u.id, u.contact, u.first_name, u.last_name, u.middle_name, u.phone,
         u.role, u.student_id, u.group_name, u.course, u.is_active,
-              u.is_verified, u.created_at, u.updated_at, u.region, u.address,
-      u.birth_date, u.gender, u.parent_phone, u.email,
+        u.is_verified, u.created_at, u.updated_at, u.region, u.address,
+        u.birth_date, u.gender, u.parent_phone, u.email, u.is_violator,
       -- Файлы пользователя (для генерации аватара на фронтенде)
       f.file_name as avatar_file_name,
         -- Информация о проживании
@@ -184,6 +191,7 @@ router.get('/', requireAdmin, async (req, res) => {
       course: user.course,
       isActive: user.is_active,
       isVerified: user.is_verified,
+      isViolator: user.is_violator,
       region: user.region,
       address: user.address,
       birthDate: formatDateFromDB(user.birth_date),
@@ -475,6 +483,13 @@ router.get('/stats', requireAdmin, async (req, res) => {
       GROUP BY role
     `)
 
+    // Получаем количество нарушителей
+    const violatorsResult = await query(`
+      SELECT COUNT(*) as violators_count
+      FROM users
+      WHERE is_violator = true
+    `)
+
     const roleStats = {
       student: { total: 0, active: 0 },
       admin: { total: 0, active: 0 },
@@ -490,12 +505,14 @@ router.get('/stats', requireAdmin, async (req, res) => {
 
     const totalUsers = Object.values(roleStats).reduce((acc, stat) => acc + stat.total, 0)
     const totalActive = Object.values(roleStats).reduce((acc, stat) => acc + stat.active, 0)
+    const violatorsCount = parseInt(violatorsResult.rows[0].violators_count)
 
     res.json({
       roleStats,
       totalUsers,
       totalActive,
       totalInactive: totalUsers - totalActive,
+      violatorsCount,
     })
   } catch (error) {
     console.error('Ошибка получения статистики:', error)
@@ -1071,6 +1088,61 @@ router.get('/stats', requireAdmin, async (req, res) => {
   } catch (error) {
     console.error('Ошибка получения статистики:', error)
     res.status(500).json({ error: 'Ошибка получения статистики' })
+  }
+})
+
+// PATCH /api/users/:id/violator - Обновить статус нарушителя
+router.patch('/:id/violator', validateUUID('id'), requireAdmin, logAdminAction('update_violator_status'), async (req, res) => {
+  try {
+    const { id } = req.params
+    const { is_violator } = req.body
+
+    if (typeof is_violator !== 'boolean') {
+      return res.status(400).json({
+        error: 'Поле is_violator должно быть булевым значением',
+      })
+    }
+
+    // Проверяем существование пользователя
+    const userResult = await query('SELECT role FROM users WHERE id = $1', [id])
+
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Пользователь не найден' })
+    }
+
+    const user = userResult.rows[0]
+
+    // Только студенты могут быть отмечены как нарушители
+    if (user.role !== 'student') {
+      return res.status(400).json({
+        error: 'Только студенты могут быть отмечены как нарушители',
+      })
+    }
+
+    // Обновляем статус нарушителя
+    const result = await query(
+      `
+      UPDATE users 
+      SET 
+        is_violator = $1,
+        updated_at = NOW()
+      WHERE id = $2
+      RETURNING id, is_violator, updated_at
+    `,
+      [is_violator, id],
+    )
+
+    res.json({
+      message: is_violator ? 'Пользователь отмечен как нарушитель' : 'Метка нарушителя снята',
+      user: {
+        id: result.rows[0].id,
+        isViolator: result.rows[0].is_violator,
+        updatedAt: result.rows[0].updated_at,
+      },
+    })
+  } catch (error) {
+    console.error('Ошибка обновления статуса нарушителя:', error)
+    res.status(500).json({ error: 'Ошибка обновления статуса нарушителя' })
   }
 })
 

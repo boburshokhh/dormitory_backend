@@ -181,6 +181,7 @@ const QUERIES = {
       u.student_id as student_number,
       u.region,
       u.gender,
+      u.is_violator,
       g.name as group_name, 
       g.course,
       -- Признак социальной защиты (наличие активного файла соответствующего типа)

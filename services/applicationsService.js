@@ -618,6 +618,7 @@ class ApplicationsService {
         studentId: app.student_number,
         region: app.region,
         gender: app.gender,
+        isViolator: app.is_violator === true,
         groupName: app.group_name,
         course: app.course,
         hasSocialProtection: app.has_social_protection === true,
