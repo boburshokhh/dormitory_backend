@@ -48,6 +48,12 @@ async function runViolatorMigration() {
     } else {
       console.log('❌ Ошибка: индекс idx_users_is_violator не найден')
     }
+    // Запускаем миграцию аудита нарушителей
+    console.log('🧾 Запуск миграции аудита нарушителей...')
+    const auditPath = path.join(__dirname, '../migrations/create_user_violation_audit.sql')
+    const auditSQL = fs.readFileSync(auditPath, 'utf8')
+    await query(auditSQL)
+    console.log('✅ Таблица user_violation_audit создана (если отсутствовала)')
   } catch (error) {
     console.error('❌ Ошибка выполнения миграции:', error)
     process.exit(1)

@@ -175,10 +175,17 @@ class ApplicationsService {
           semester,
         ])
 
-        const totalTime = Date.now() - startTime
-        console.log(`✅ Заявка создана успешно за ${totalTime}ms`)
+        const application = applicationResult.rows[0]
+        console.log('✅ Заявка создана, ID:', application.id)
 
-        return applicationResult.rows[0]
+        // Автоматически назначаем позицию в очереди
+        console.log('🔢 Назначаем позицию в очереди')
+        await this.assignQueuePosition(client, application.id)
+
+        const totalTime = Date.now() - startTime
+        console.log(`✅ Заявка создана и добавлена в очередь за ${totalTime}ms`)
+
+        return application
       })
     } catch (error) {
       const totalTime = Date.now() - startTime
@@ -703,6 +710,36 @@ class ApplicationsService {
       publicUrl: fileUrl,
       isPublic: file.is_public,
       metadata: file.metadata,
+    }
+  }
+
+  // Назначение позиции в очереди
+  async assignQueuePosition(client, applicationId) {
+    try {
+      // Получаем максимальную позицию в очереди
+      const maxPositionResult = await client.query(`
+        SELECT COALESCE(MAX(queue_position), 0) as max_position
+        FROM applications
+        WHERE is_queue = true AND status = 'submitted'
+      `)
+
+      const nextPosition = maxPositionResult.rows[0].max_position + 1
+
+      // Обновляем позицию в очереди для новой заявки
+      await client.query(
+        `
+        UPDATE applications
+        SET queue_position = $1
+        WHERE id = $2
+      `,
+        [nextPosition, applicationId],
+      )
+
+      console.log(`✅ Позиция в очереди назначена: ${nextPosition}`)
+      return nextPosition
+    } catch (error) {
+      console.error('❌ Ошибка назначения позиции в очереди:', error)
+      throw createDatabaseError('Ошибка назначения позиции в очереди', 'applications', error)
     }
   }
 }

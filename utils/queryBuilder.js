@@ -369,9 +369,9 @@ const QUERIES = {
   // Создание заявки
   CREATE_APPLICATION: `
     INSERT INTO applications (
-      student_id, dormitory_id, documents, notes, status, academic_year, semester
-    ) VALUES ($1, $2, $3, $4, 'submitted', $5, $6)
-    RETURNING id, submission_date, status, created_at
+      student_id, dormitory_id, documents, notes, status, academic_year, semester, is_queue
+    ) VALUES ($1, $2, $3, $4, 'submitted', $5, $6, true)
+    RETURNING id, submission_date, status, created_at, is_queue
   `,
 
   // Обновление заявки

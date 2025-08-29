@@ -11,7 +11,10 @@ const {
 
 const router = express.Router()
 
-// Применяем аутентификацию ко всем маршрутам
+// Публичный endpoint для очереди (без аутентификации)
+router.get('/public/queue', applicationsController.getPublicQueueData)
+
+// Применяем аутентификацию к остальным маршрутам
 router.use(authenticateToken)
 
 // GET /api/applications - Получить заявки (с фильтрацией по роли)

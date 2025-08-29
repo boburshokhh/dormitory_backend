@@ -41,6 +41,7 @@ class ApplicationsController {
         gender,
         room_assigned,
         floor,
+        is_queue, // Добавляем фильтр по типу очереди
         date_from = currentMonthRange.from, // Используем текущий месяц по умолчанию
         date_to = currentMonthRange.to, // Используем текущий месяц по умолчанию
       } = req.query
@@ -60,6 +61,7 @@ class ApplicationsController {
         gender,
         room_assigned,
         floor,
+        is_queue, // Добавляем фильтр по типу очереди
         date_from,
         date_to,
       }
@@ -214,12 +216,13 @@ class ApplicationsController {
 
       res.status(201).json({
         success: true,
-        message: 'Заявка успешно подана',
+        message: 'Заявка успешно подана и добавлена в очередь',
         data: {
           id: result.id,
           status: result.status,
           submissionDate: result.submission_date,
           createdAt: result.created_at,
+          isQueue: result.is_queue,
           processingTime: totalTime,
         },
       })
@@ -493,6 +496,75 @@ class ApplicationsController {
       }
     } catch (error) {
       await handleApplicationError(error, req, res, context)
+    }
+  }
+
+  // GET /api/applications/public/queue - Публичные данные очереди
+  async getPublicQueueData(req, res) {
+    const context = { function: 'getPublicQueueData', actionType: 'public_queue_view' }
+
+    try {
+      const { limit = 'ALL', sort_by = 'submission_date', sort_order = 'asc' } = req.query
+
+      // Строим SQL запрос для получения только заявок в очереди
+      let sql = `
+        SELECT 
+          a.id,
+          a.status,
+          a.submission_date,
+          a.is_queue,
+          a.queue_position,
+          a.settlement_date,
+          u.first_name,
+          u.last_name,
+          d.name as dormitory_name
+        FROM applications a
+        JOIN users u ON a.student_id = u.id
+        LEFT JOIN dormitories d ON a.dormitory_id = d.id
+        WHERE a.status = 'submitted' AND a.is_queue = true
+        ORDER BY a.queue_position ASC NULLS LAST, a.submission_date ASC
+      `
+
+      // Добавляем лимит если указан
+      if (limit !== 'ALL') {
+        const limitNum = parseInt(limit)
+        if (!isNaN(limitNum) && limitNum > 0) {
+          sql += ` LIMIT ${limitNum}`
+        }
+      }
+
+      const result = await query(sql)
+
+      // Форматируем данные для фронтенда
+      const applications = result.rows.map((row) => ({
+        id: row.id,
+        status: row.status,
+        submissionDate: row.submission_date,
+        is_queue: row.is_queue || false,
+        queue_position: row.queue_position,
+        settlement_date: row.settlement_date,
+        student: {
+          firstName: row.first_name,
+          lastName: row.last_name,
+        },
+        dormitory: {
+          name: row.dormitory_name,
+        },
+      }))
+
+      res.json({
+        success: true,
+        applications,
+        total: applications.length,
+        message: 'Данные очереди успешно загружены',
+      })
+    } catch (error) {
+      console.error('Ошибка получения публичных данных очереди:', error)
+      res.status(500).json({
+        success: false,
+        error: 'Ошибка загрузки данных очереди',
+        message: 'Не удалось загрузить данные очереди',
+      })
     }
   }
 }

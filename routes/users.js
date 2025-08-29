@@ -1092,59 +1092,102 @@ router.get('/stats', requireAdmin, async (req, res) => {
 })
 
 // PATCH /api/users/:id/violator - Обновить статус нарушителя
-router.patch('/:id/violator', validateUUID('id'), requireAdmin, logAdminAction('update_violator_status'), async (req, res) => {
-  try {
-    const { id } = req.params
-    const { is_violator } = req.body
+router.patch(
+  '/:id/violator',
+  validateUUID('id'),
+  requireAdmin,
+  logAdminAction('update_violator_status'),
+  async (req, res) => {
+    try {
+      const { id } = req.params
+      const { is_violator, reason, notify_email } = req.body
 
-    if (typeof is_violator !== 'boolean') {
-      return res.status(400).json({
-        error: 'Поле is_violator должно быть булевым значением',
+      if (typeof is_violator !== 'boolean') {
+        return res.status(400).json({
+          error: 'Поле is_violator должно быть булевым значением',
+        })
+      }
+      if (!reason || typeof reason !== 'string' || reason.trim().length < 2) {
+        return res.status(400).json({ error: 'Причина обязательна' })
+      }
+
+      const notifyEmail = !!notify_email
+
+      // Проверяем существование пользователя
+      const userResult = await query(
+        'SELECT id, role, email, is_violator FROM users WHERE id = $1',
+        [id],
+      )
+      if (userResult.rows.length === 0) {
+        return res.status(404).json({ error: 'Пользователь не найден' })
+      }
+      const user = userResult.rows[0]
+
+      // Только студенты могут быть отмечены как нарушители
+      if (user.role !== 'student') {
+        return res.status(400).json({
+          error: 'Только студенты могут быть отмечены как нарушители',
+        })
+      }
+
+      // Обновляем статус нарушителя
+      const updateResult = await query(
+        `
+        UPDATE users 
+        SET is_violator = $1, updated_at = NOW()
+        WHERE id = $2
+        RETURNING id, is_violator, updated_at
+      `,
+        [is_violator, id],
+      )
+
+      // Запись в аудит
+      await query(
+        `
+        INSERT INTO user_violation_audit (
+          user_id, actor_id, action, reason, notify_email, previous_value, new_value
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+      `,
+        [
+          id,
+          req.user.id,
+          is_violator ? 'mark' : 'unmark',
+          reason.trim(),
+          notifyEmail,
+          user.is_violator,
+          is_violator,
+        ],
+      )
+
+      // Опциональное уведомление по email
+      if (notifyEmail && user.email) {
+        try {
+          const notificationService = require('../services/notificationService')
+          await notificationService.sendPasswordResetEmail(
+            user.email,
+            is_violator
+              ? 'Вы отмечены как нарушитель правил проживания. Обратитесь к администрации.'
+              : 'С вас снята отметка нарушителя.',
+          )
+        } catch (e) {
+          console.warn('Не удалось отправить уведомление по email:', e.message)
+        }
+      }
+
+      res.json({
+        message: is_violator ? 'Пользователь отмечен как нарушитель' : 'Метка нарушителя снята',
+        user: {
+          id: updateResult.rows[0].id,
+          isViolator: updateResult.rows[0].is_violator,
+          updatedAt: updateResult.rows[0].updated_at,
+        },
       })
+    } catch (error) {
+      console.error('Ошибка обновления статуса нарушителя:', error)
+      res.status(500).json({ error: 'Ошибка обновления статуса нарушителя' })
     }
-
-    // Проверяем существование пользователя
-    const userResult = await query('SELECT role FROM users WHERE id = $1', [id])
-
-    if (userResult.rows.length === 0) {
-      return res.status(404).json({ error: 'Пользователь не найден' })
-    }
-
-    const user = userResult.rows[0]
-
-    // Только студенты могут быть отмечены как нарушители
-    if (user.role !== 'student') {
-      return res.status(400).json({
-        error: 'Только студенты могут быть отмечены как нарушители',
-      })
-    }
-
-    // Обновляем статус нарушителя
-    const result = await query(
-      `
-      UPDATE users 
-      SET 
-        is_violator = $1,
-        updated_at = NOW()
-      WHERE id = $2
-      RETURNING id, is_violator, updated_at
-    `,
-      [is_violator, id],
-    )
-
-    res.json({
-      message: is_violator ? 'Пользователь отмечен как нарушитель' : 'Метка нарушителя снята',
-      user: {
-        id: result.rows[0].id,
-        isViolator: result.rows[0].is_violator,
-        updatedAt: result.rows[0].updated_at,
-      },
-    })
-  } catch (error) {
-    console.error('Ошибка обновления статуса нарушителя:', error)
-    res.status(500).json({ error: 'Ошибка обновления статуса нарушителя' })
-  }
-})
+  },
+)
 
 // Тестовый endpoint для проверки доступности
 router.get('/test', requireAdmin, (req, res) => {

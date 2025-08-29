@@ -338,6 +338,7 @@ router.get('/students', requireAdmin, async (req, res) => {
     }
 
     // Если запрошен фильтр по типу общежития из заявки (ДПС), ограничиваем по типу dormitories, связанному с заявкой
+    // Если dormitory_type не передан, возвращаем студентов с любым типом заявки
     if (normalizedDormitoryType) {
       whereClause += ` AND ad.type = $${paramIndex}`
       params.push(normalizedDormitoryType)
@@ -448,7 +449,7 @@ router.put(
 
       // Проверяем существование студента
       const studentResult = await query(
-        'SELECT id, first_name, last_name, role, is_active FROM users WHERE id = $1',
+        'SELECT id, first_name, last_name, role, is_active, course FROM users WHERE id = $1',
         [studentId],
       )
 
@@ -491,11 +492,16 @@ router.put(
         const appDormType = appRes.rows[0].dormitory_type // 'type_1' | 'type_2' | null
         const bedDormType = bed.dormitory_type // 'type_1' | 'type_2'
         if (appDormType && bedDormType && appDormType !== bedDormType) {
-          const appTypeLabel = appDormType === 'type_1' ? 'ДПС 1' : 'ДПС 2'
-          const bedTypeLabel = bedDormType === 'type_1' ? 'ДПС 1' : 'ДПС 2'
-          return res.status(400).json({
-            error: `Несоответствие типа общежития: заявка студента на ${appTypeLabel}, а выбранная койка находится в ${bedTypeLabel}`,
-          })
+          // Разрешаем назначение на койки ДПС1 независимо от выбранного типа в заявке
+          // Блокируем только случай, когда пытаются назначить в ДПС2 при несовпадении типа
+          if (bedDormType === 'type_2') {
+            const appTypeLabel = appDormType === 'type_1' ? 'ДПС 1' : 'ДПС 2'
+            const bedTypeLabel = bedDormType === 'type_1' ? 'ДПС 1' : 'ДПС 2'
+            return res.status(400).json({
+              error: `Несоответствие типа общежития: заявка студента на ${appTypeLabel}, а выбранная койка находится в ${bedTypeLabel}`,
+            })
+          }
+          // если целевая койка в ДПС1 — продолжаем без ошибки
         }
       }
 
