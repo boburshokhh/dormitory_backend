@@ -74,6 +74,8 @@ class ApplicationsService {
   // Получение детальной информации о заявке
   async getApplicationDetail(applicationId, userRole, userId) {
     try {
+      console.log('🔍 Получаем детальную информацию о заявке:', applicationId)
+
       const result = await query(QUERIES.GET_APPLICATION_DETAIL, [applicationId])
 
       if (result.rows.length === 0) {
@@ -81,6 +83,7 @@ class ApplicationsService {
       }
 
       const app = result.rows[0]
+      console.log('✅ Заявка найдена, студент:', app.student_id)
 
       // Проверяем права доступа для студентов
       if (userRole === 'student' && app.student_id !== userId) {
@@ -88,6 +91,7 @@ class ApplicationsService {
       }
 
       // Получаем файлы пользователя
+      console.log('📁 Получаем файлы пользователя')
       const filesResult = await query(QUERIES.GET_USER_FILES, [app.student_id])
 
       const files = await Promise.all(
@@ -103,8 +107,10 @@ class ApplicationsService {
         }),
       )
 
+      console.log('✅ Файлы обработаны, форматируем результат')
       return this.formatApplicationDetail(app, files)
     } catch (error) {
+      console.error('❌ Ошибка в getApplicationDetail:', error.message)
       if (error.type) throw error // Если это уже ApplicationError
       throw createDatabaseError(
         'Ошибка получения детальной информации о заявке',
@@ -249,15 +255,7 @@ class ApplicationsService {
         // Проверяем заявку
         const application = await this.getApplicationForReview(client, applicationId)
 
-        // Если одобряем заявку, проверяем доступность мест
-        if (status === 'approved' && application.dormitory_id) {
-          await this.checkDormitoryCapacity(
-            client,
-            application.dormitory_id,
-            application.academic_year,
-            application.semester,
-          )
-        }
+        // Проверка доступности мест убрана по требованию
 
         // Обновляем заявку
         const updateResult = await client.query(QUERIES.REVIEW_APPLICATION, [
@@ -475,38 +473,12 @@ class ApplicationsService {
       })
     }
 
-    // Проверяем заполненность
-    await this.checkDormitoryCapacity(client, dormitoryId, academicYear, semester)
+    // Проверка заполненности отключена по требованию
   }
 
   async checkDormitoryCapacity(client, dormitoryId, academicYear, semester) {
-    // Получаем вместимость
-    const capacityResult = await client.query(QUERIES.GET_DORMITORY_CAPACITY, [dormitoryId])
-    const totalCapacity = parseInt(capacityResult.rows[0].total_capacity || 0)
-
-    if (totalCapacity === 0) {
-      throw createBusinessLogicError(
-        'В выбранном общежитии нет доступных мест',
-        'NO_BEDS_AVAILABLE',
-        { dormitoryId },
-      )
-    }
-
-    // Получаем текущую заполненность
-    const occupancyResult = await client.query(QUERIES.GET_DORMITORY_OCCUPANCY, [
-      dormitoryId,
-      academicYear,
-      semester,
-    ])
-    const currentOccupancy = parseInt(occupancyResult.rows[0].current_occupancy)
-
-    if (currentOccupancy >= totalCapacity) {
-      throw createBusinessLogicError('В выбранном общежитии нет свободных мест', 'DORMITORY_FULL', {
-        dormitoryId,
-        totalCapacity,
-        currentOccupancy,
-      })
-    }
+    // Проверка доступности мест отключена по требованию
+    // Метод оставлен для совместимости, но не выполняет проверок
   }
 
   async validateDormitoryExists(client, dormitoryId) {
@@ -619,6 +591,7 @@ class ApplicationsService {
       preferredRoomType: app.preferred_room_type,
       rejectionReason: app.rejection_reason,
       student: {
+        id: app.student_id,
         firstName: app.first_name,
         lastName: app.last_name,
         email: app.email,
@@ -629,6 +602,7 @@ class ApplicationsService {
         groupName: app.group_name,
         course: app.course,
         hasSocialProtection: app.has_social_protection === true,
+        avatar_file_name: app.avatar_file_name,
       },
       dormitory: app.dormitory_name ? { name: app.dormitory_name, type: app.dormitory_type } : null,
       roomAssigned: app.room_assigned === true,
@@ -683,9 +657,9 @@ class ApplicationsService {
       rejectionReason: app.rejection_reason,
       documents: Array.isArray(app.documents)
         ? app.documents
-        : app.documents
+        : app.documents && typeof app.documents === 'string'
           ? JSON.parse(app.documents)
-          : [],
+          : app.documents || [],
       notes: app.notes,
       priorityScore: app.priority_score,
       createdAt: app.created_at,

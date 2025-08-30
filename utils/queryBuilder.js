@@ -175,6 +175,7 @@ const QUERIES = {
       a.rejection_reason,
       
       -- Основные данные студента
+      u.id as student_id,
       u.first_name, 
       u.last_name, 
       u.email, 
@@ -184,13 +185,15 @@ const QUERIES = {
       u.is_violator,
       g.name as group_name, 
       g.course,
+      -- Аватар студента
+      f.file_name as avatar_file_name,
       -- Признак социальной защиты (наличие активного файла соответствующего типа)
       EXISTS (
-        SELECT 1 FROM files f
-        WHERE f.user_id = u.id
-          AND f.file_type = 'social_protection'
-          AND f.status IN ('active','uploading')
-          AND f.deleted_at IS NULL
+        SELECT 1 FROM files f_social
+        WHERE f_social.user_id = u.id
+          AND f_social.file_type = 'social_protection'
+          AND f_social.status IN ('active','uploading')
+          AND f_social.deleted_at IS NULL
       ) AS has_social_protection,
       
       -- Название общежития
@@ -234,6 +237,7 @@ const QUERIES = {
     JOIN users u ON a.student_id = u.id
     LEFT JOIN dormitories d ON a.dormitory_id = d.id
     LEFT JOIN groups g ON u.group_id = g.id
+    LEFT JOIN files f ON u.avatar_file_id = f.id AND f.status = 'active' AND f.deleted_at IS NULL
   `,
 
   // Детальная информация о заявке

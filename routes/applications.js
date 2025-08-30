@@ -23,6 +23,9 @@ router.get('/', applicationsController.getApplicationsList)
 // GET /api/applications/stats - Статистика заявок (только админы)
 router.get('/stats', requireAdmin, applicationsController.getApplicationsStats)
 
+// GET /api/applications/photos - Получить фотографии студентов (только админы)
+router.get('/photos', requireAdmin, applicationsController.getStudentPhotos)
+
 // GET /api/applications/user/:userId - Получить все заявки пользователя (админы)
 router.get('/user/:userId', validateUUID('userId'), requireAdmin, async (req, res) => {
   try {

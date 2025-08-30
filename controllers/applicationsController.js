@@ -14,6 +14,7 @@ const {
   validateUUID,
 } = require('../validators/applicationValidator')
 const { getCurrentMonthRange } = require('../utils/dateUtils')
+const { getFileUrl } = require('../config/fileStorage')
 
 class ApplicationsController {
   // GET /api/applications - Получить список заявок
@@ -565,6 +566,114 @@ class ApplicationsController {
         error: 'Ошибка загрузки данных очереди',
         message: 'Не удалось загрузить данные очереди',
       })
+    }
+  }
+
+  // GET /api/applications/photos - Получить фотографии студентов для скачивания архива
+  async getStudentPhotos(req, res) {
+    const context = { function: 'getStudentPhotos', actionType: 'admin_action' }
+
+    try {
+      // Валидация параметров
+      const validatedParams = validateListParams(req.query)
+
+      // Получаем текущий месяц для значений по умолчанию
+      const currentMonthRange = getCurrentMonthRange()
+
+      const {
+        status,
+        dormitory_id,
+        academic_year,
+        semester,
+        group_id,
+        region,
+        course,
+        dormitory_type,
+        has_social_protection,
+        search,
+        gender,
+        room_assigned,
+        floor,
+        is_queue,
+        date_from = currentMonthRange.from,
+        date_to = currentMonthRange.to,
+      } = req.query
+
+      // Фильтры (те же, что и для основного списка заявок)
+      const filters = {
+        status,
+        dormitory_id,
+        academic_year,
+        semester,
+        group_id,
+        region,
+        course,
+        dormitory_type,
+        has_social_protection,
+        search,
+        gender,
+        room_assigned,
+        floor,
+        is_queue,
+        date_from,
+        date_to,
+      }
+
+      // Получаем все заявки с фильтрами (без пагинации для архива)
+      const result = await applicationsService.getApplicationsList(
+        req.user.role,
+        req.user.id,
+        filters,
+        { ...validatedParams, pageNum: 1, limitNum: 'ALL' },
+      )
+
+      // Разделяем студентов на тех, у кого есть фото и тех, у кого нет
+      const studentsWithPhotos = []
+      const studentsWithoutPhotos = []
+
+      for (const application of result.applications) {
+        const student = application.student
+        const fullName = `${student.lastName || ''} ${student.firstName || ''}`.trim() || 'Студент'
+
+        if (student.avatar_file_name) {
+          try {
+            // Формируем URL для фотографии
+            const photoUrl = getFileUrl(student.avatar_file_name)
+
+            studentsWithPhotos.push({
+              id: student.id,
+              fullName: fullName,
+              photoUrl: photoUrl,
+              originalName: student.avatar_file_name,
+            })
+          } catch (error) {
+            console.error(`Ошибка формирования URL для студента ${student.id}:`, error)
+            studentsWithoutPhotos.push({
+              id: student.id,
+              fullName: fullName,
+              reason: 'Ошибка получения URL фотографии',
+            })
+          }
+        } else {
+          studentsWithoutPhotos.push({
+            id: student.id,
+            fullName: fullName,
+            reason: 'Фотография не загружена',
+          })
+        }
+      }
+
+      res.json({
+        success: true,
+        data: {
+          studentsWithPhotos,
+          studentsWithoutPhotos,
+          total: result.applications.length,
+        },
+        message: 'Фотографии студентов успешно получены',
+      })
+    } catch (error) {
+      await handleApplicationError(error, req, res, context)
     }
   }
 }
