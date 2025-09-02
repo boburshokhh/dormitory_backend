@@ -25,9 +25,6 @@ class ApplicationsController {
       // Валидация параметров
       const validatedParams = validateListParams(req.query)
 
-      // Получаем текущий месяц для значений по умолчанию
-      const currentMonthRange = getCurrentMonthRange()
-
       const {
         status,
         dormitory_id,
@@ -43,8 +40,8 @@ class ApplicationsController {
         room_assigned,
         floor,
         is_queue, // Добавляем фильтр по типу очереди
-        date_from = currentMonthRange.from, // Используем текущий месяц по умолчанию
-        date_to = currentMonthRange.to, // Используем текущий месяц по умолчанию
+        date_from,
+        date_to,
       } = req.query
 
       // Фильтры
@@ -577,9 +574,6 @@ class ApplicationsController {
       // Валидация параметров
       const validatedParams = validateListParams(req.query)
 
-      // Получаем текущий месяц для значений по умолчанию
-      const currentMonthRange = getCurrentMonthRange()
-
       const {
         status,
         dormitory_id,
@@ -595,8 +589,8 @@ class ApplicationsController {
         room_assigned,
         floor,
         is_queue,
-        date_from = currentMonthRange.from,
-        date_to = currentMonthRange.to,
+        date_from,
+        date_to,
       } = req.query
 
       // Фильтры (те же, что и для основного списка заявок)
