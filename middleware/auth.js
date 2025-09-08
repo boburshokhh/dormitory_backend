@@ -72,6 +72,11 @@ const requireSuperAdmin = requireRoles('super_admin')
 // Middleware для проверки прав студента или выше
 const requireStudent = requireRoles('student', 'admin', 'super_admin')
 
+// Middleware для проверки роли
+const requireRole = (roles) => {
+  return requireRoles(...roles)
+}
+
 // Middleware для проверки доступа к собственным ресурсам
 const requireOwnershipOrAdmin = (userIdField = 'student_id') => {
   return async (req, res, next) => {
@@ -179,6 +184,7 @@ const generateRefreshToken = (user) => {
 module.exports = {
   authenticateToken,
   requireRoles,
+  requireRole,
   requireAdmin,
   requireSuperAdmin,
   requireStudent,

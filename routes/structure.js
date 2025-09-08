@@ -284,6 +284,102 @@ router.get('/dormitories/:id', validateUUID('id'), async (req, res) => {
 // УПРАВЛЕНИЕ КОЙКАМИ
 // ============================================================================
 
+// GET /api/structure/students-with-details - Получить полную информацию о студентах с проживанием для экспорта
+router.get('/students-with-details', requireAdmin, async (req, res) => {
+  try {
+    const { dormitory_id } = req.query
+
+    let whereClause = "WHERE u.role = 'student' AND u.is_active = true AND b.id IS NOT NULL"
+    const params = []
+    let paramIndex = 1
+
+    if (dormitory_id) {
+      whereClause += ` AND d.id = $${paramIndex}`
+      params.push(dormitory_id)
+      paramIndex++
+    }
+
+    const result = await query(
+      `
+      SELECT DISTINCT ON (u.id) 
+        u.id, u.first_name, u.last_name, u.middle_name, u.student_id, 
+        u.group_name, u.course, u.phone, u.email, u.gender, u.birth_date,
+        u.parent_phone, u.passport_pinfl, u.region, u.address,
+        g.name as group_full_name, g.faculty, g.speciality,
+        b.id as bed_id, b.bed_number, b.assigned_at,
+        r.id as room_id, r.room_number, r.block_room_number,
+        bl.id as block_id, bl.block_number,
+        f1.id as floor_id, f1.floor_number,
+        f2.id as floor_id_2, f2.floor_number as floor_number_2,
+        d.id as dormitory_id, d.name as dormitory_name, d.type as dormitory_type
+      FROM users u
+      LEFT JOIN groups g ON u.group_id = g.id AND g.is_active = true
+      LEFT JOIN beds b ON u.id = b.student_id AND b.is_active = true
+      LEFT JOIN rooms r ON b.room_id = r.id AND r.is_active = true
+      LEFT JOIN floors f1 ON r.floor_id = f1.id AND f1.is_active = true
+      LEFT JOIN blocks bl ON r.block_id = bl.id AND bl.is_active = true
+      LEFT JOIN floors f2 ON bl.floor_id = f2.id AND f2.is_active = true
+      LEFT JOIN dormitories d ON (f1.dormitory_id = d.id OR f2.dormitory_id = d.id) AND d.is_active = true
+      ${whereClause}
+      ORDER BY u.id, b.assigned_at DESC
+    `,
+      params,
+    )
+
+    const students = result.rows.map((row) => ({
+      id: row.id,
+      firstName: row.first_name,
+      lastName: row.last_name,
+      middleName: row.middle_name,
+      fullName: `${row.last_name} ${row.first_name} ${row.middle_name || ''}`.trim(),
+      studentId: row.student_id,
+      groupName: row.group_name,
+      groupFullName: row.group_full_name,
+      faculty: row.faculty,
+      speciality: row.speciality,
+      course: row.course,
+      phone: row.phone,
+      email: row.email,
+      gender: row.gender,
+      birthDate: row.birth_date,
+      parentPhone: row.parent_phone,
+      passportPinfl: row.passport_pinfl,
+      region: row.region,
+      address: row.address,
+      bed: {
+        id: row.bed_id,
+        number: row.bed_number,
+        assignedAt: row.assigned_at,
+      },
+      room: {
+        id: row.room_id,
+        number: row.room_number,
+        blockRoomNumber: row.block_room_number,
+      },
+      block: row.block_id
+        ? {
+            id: row.block_id,
+            number: row.block_number,
+          }
+        : null,
+      floor: {
+        id: row.floor_id || row.floor_id_2,
+        number: row.floor_number || row.floor_number_2,
+      },
+      dormitory: {
+        id: row.dormitory_id,
+        name: row.dormitory_name,
+        type: row.dormitory_type,
+      },
+    }))
+
+    res.json(students)
+  } catch (error) {
+    console.error('Ошибка получения студентов с деталями:', error)
+    res.status(500).json({ error: 'Ошибка получения данных студентов' })
+  }
+})
+
 // GET /api/structure/students - Получить список студентов для назначения на койки
 router.get('/students', requireAdmin, async (req, res) => {
   try {

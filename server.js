@@ -153,6 +153,18 @@ const routesToLoad = [
     critical: false,
   },
   {
+    key: 'supervisor',
+    path: './routes/supervisor',
+    description: 'Supervisor routes',
+    critical: false,
+  },
+  {
+    key: 'rollCall',
+    path: './routes/rollCall',
+    description: 'Roll Call routes',
+    critical: false,
+  },
+  {
     key: 'testTelegram',
     path: './routes/test-telegram',
     description: 'Telegram Test routes',
@@ -264,6 +276,7 @@ const allowedOrigins = [
   'https://9e4890cdc062.ngrok-free.app',
   'http://192.168.1.253',
   'http://90.156.198.42',
+  'http://localhost:9000',
   process.env.FRONTEND_URL,
 ].filter(Boolean)
 
@@ -453,6 +466,8 @@ const routeMappings = [
   { path: '/api/groups', route: 'groups', name: 'Groups' },
   { path: '/api/files', route: 'files', name: 'Files' },
   { path: '/api/documents', route: 'documents', name: 'Documents' },
+  { path: '/api/supervisor', route: 'supervisor', name: 'Supervisor' },
+  { path: '/api/roll-call', route: 'rollCall', name: 'Roll Call' },
   { path: '/api/test', route: 'testTelegram', name: 'Telegram Test' },
 ]
 

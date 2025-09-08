@@ -492,6 +492,7 @@ router.get('/stats', requireAdmin, async (req, res) => {
 
     const roleStats = {
       student: { total: 0, active: 0 },
+      supervisor: { total: 0, active: 0 },
       admin: { total: 0, active: 0 },
       super_admin: { total: 0, active: 0 },
     }
@@ -601,7 +602,7 @@ router.post('/', requireSuperAdmin, logAdminAction('create_user'), async (req, r
       })
     }
 
-    if (!['student', 'admin', 'super_admin'].includes(role)) {
+    if (!['student', 'supervisor', 'admin', 'super_admin'].includes(role)) {
       return res.status(400).json({
         error: 'Неверная роль',
       })
@@ -751,8 +752,8 @@ router.put(
   },
 )
 
-// PUT /api/users/:id/role - Изменить роль пользователя (только супер-админы)
-router.put(
+// PATCH /api/users/:id/role - Изменить роль пользователя (только супер-админы)
+router.patch(
   '/:id/role',
   validateUUID('id'),
   requireSuperAdmin,
@@ -760,10 +761,21 @@ router.put(
   async (req, res) => {
     try {
       const { id } = req.params
-      const { role } = req.body
+      const { role, reason, dormitory_id } = req.body
 
-      if (!['student', 'admin', 'super_admin'].includes(role)) {
+      if (!['student', 'supervisor', 'admin', 'super_admin'].includes(role)) {
         return res.status(400).json({ error: 'Неверная роль' })
+      }
+
+      if (!reason || typeof reason !== 'string' || reason.trim().length < 10) {
+        return res
+          .status(400)
+          .json({ error: 'Причина изменения роли должна содержать минимум 10 символов' })
+      }
+
+      // Для роли supervisor проверяем наличие dormitory_id
+      if (role === 'supervisor' && !dormitory_id) {
+        return res.status(400).json({ error: 'Для роли коменданта необходимо указать ДПС' })
       }
 
       // Проверяем, что не меняем роль самого себя
@@ -773,6 +785,17 @@ router.put(
         })
       }
 
+      // Получаем текущую роль пользователя
+      const currentUserResult = await query('SELECT email, role FROM users WHERE id = $1', [id])
+
+      if (currentUserResult.rows.length === 0) {
+        return res.status(404).json({ error: 'Пользователь не найден' })
+      }
+
+      const currentUser = currentUserResult.rows[0]
+      const previousRole = currentUser.role
+
+      // Обновляем роль
       const result = await query(
         `
         UPDATE users 
@@ -783,16 +806,58 @@ router.put(
         [role, id],
       )
 
-      if (result.rows.length === 0) {
-        return res.status(404).json({ error: 'Пользователь не найден' })
-      }
-
       const user = result.rows[0]
 
-      res.json({
-        message: `Роль пользователя ${user.email} изменена на ${role}`,
+      // Записываем в аудит
+      await query(
+        `
+        INSERT INTO user_role_audit (
+          user_id, actor_id, previous_role, new_role, reason, notify_email
+        ) VALUES ($1, $2, $3, $4, $5, $6)
+      `,
+        [id, req.user.id, previousRole, role, reason.trim(), false],
+      )
+
+      // Если назначена роль supervisor, сохраняем связь с ДПС
+      if (role === 'supervisor' && dormitory_id) {
+        // Сначала деактивируем все существующие связи пользователя с ДПС
+        await query(`UPDATE supervisor_dormitories SET is_active = false WHERE user_id = $1`, [id])
+
+        // Создаем новую связь
+        await query(
+          `
+          INSERT INTO supervisor_dormitories (
+            user_id, dormitory_id, assigned_by
+          ) VALUES ($1, $2, $3)
+          ON CONFLICT (user_id, dormitory_id) 
+          DO UPDATE SET 
+            is_active = true, 
+            assigned_at = NOW(), 
+            assigned_by = $3
+          `,
+          [id, dormitory_id, req.user.id],
+        )
+      }
+
+      const responseData = {
+        message: `Роль пользователя ${user.email} изменена с "${previousRole}" на "${role}"`,
+        previousRole,
+        newRole: role,
         updatedAt: user.updated_at,
-      })
+      }
+
+      // Если назначена роль supervisor, добавляем информацию о ДПС
+      if (role === 'supervisor' && dormitory_id) {
+        const dormitoryResult = await query('SELECT name FROM dormitories WHERE id = $1', [
+          dormitory_id,
+        ])
+        if (dormitoryResult.rows.length > 0) {
+          responseData.dormitoryName = dormitoryResult.rows[0].name
+          responseData.message += ` и назначен комендантом ДПС "${dormitoryResult.rows[0].name}"`
+        }
+      }
+
+      res.json(responseData)
     } catch (error) {
       console.error('Ошибка изменения роли:', error)
       res.status(500).json({ error: 'Ошибка изменения роли' })
@@ -1065,6 +1130,7 @@ router.get('/stats', requireAdmin, async (req, res) => {
 
     const roleStats = {
       student: { total: 0, active: 0 },
+      supervisor: { total: 0, active: 0 },
       admin: { total: 0, active: 0 },
       super_admin: { total: 0, active: 0 },
     }
