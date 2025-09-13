@@ -133,6 +133,77 @@ router.get('/', async (req, res) => {
   }
 })
 
+// GET /api/rooms/:id/residents - жильцы конкретной комнаты и сводка по местам
+router.get('/:id/residents', async (req, res) => {
+  try {
+    const { id } = req.params
+
+    // Информация по комнате и местам
+    const roomInfoRes = await query(
+      `SELECT r.id, r.room_number, r.bed_count AS total_beds,
+              COALESCE(occ.count, 0) AS occupied_beds,
+              (r.bed_count - COALESCE(occ.count, 0)) AS available_beds
+       FROM rooms r
+       LEFT JOIN (
+         SELECT room_id, COUNT(*) AS count
+         FROM beds
+         WHERE is_occupied = true AND is_active = true
+         GROUP BY room_id
+       ) occ ON occ.room_id = r.id
+       WHERE r.id = $1`,
+      [id],
+    )
+
+    if (roomInfoRes.rowCount === 0) {
+      return res.status(404).json({ error: 'Комната не найдена' })
+    }
+
+    // Список жильцов
+    const residentsRes = await query(
+      `SELECT b.bed_number,
+              u.id AS user_id,
+              u.first_name,
+              u.last_name,
+              u.middle_name,
+              u.student_id,
+              u.group_name,
+              u.course,
+              b.assigned_at
+       FROM beds b
+       LEFT JOIN users u ON u.id = b.student_id
+       WHERE b.room_id = $1 AND b.is_active = true AND b.is_occupied = true
+       ORDER BY b.bed_number`,
+      [id],
+    )
+
+    const room = roomInfoRes.rows[0]
+    res.json({
+      success: true,
+      data: {
+        room: {
+          id: id,
+          roomNumber: room.room_number,
+          totalBeds: parseInt(room.total_beds),
+          occupiedBeds: parseInt(room.occupied_beds),
+          availableBeds: parseInt(room.available_beds),
+        },
+        residents: residentsRes.rows.map((r) => ({
+          bedNumber: r.bed_number,
+          userId: r.user_id,
+          fullName: `${r.last_name || ''} ${r.first_name || ''} ${r.middle_name || ''}`.trim(),
+          studentId: r.student_id,
+          groupName: r.group_name,
+          course: r.course,
+          assignedAt: r.assigned_at,
+        })),
+      },
+    })
+  } catch (error) {
+    console.error('Ошибка получения жильцов комнаты:', error)
+    res.status(500).json({ error: 'Ошибка получения жильцов комнаты' })
+  }
+})
+
 // GET /api/rooms/export - Экспорт списка комнат с информацией о жильцах
 router.get('/export', requireAdmin, async (req, res) => {
   try {

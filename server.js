@@ -41,7 +41,6 @@ process.on('unhandledRejection', (reason, promise) => {
 // Загружаем переменные окружения
 try {
   require('dotenv').config({ path: './.env' })
-  console.log('✅ Переменные окружения загружены')
 } catch (error) {
   console.error('❌ Ошибка загрузки .env файла:', error.message)
 }
@@ -49,9 +48,7 @@ try {
 // Функция безопасной загрузки модулей
 function safeRequire(modulePath, description) {
   try {
-    console.log(`🔄 Загрузка ${description}: ${modulePath}`)
     const module = require(modulePath)
-    console.log(`✅ ${description} загружен успешно`)
     return module
   } catch (error) {
     console.error(`❌ ОШИБКА ЗАГРУЗКИ ${description.toUpperCase()}:`)
@@ -72,7 +69,7 @@ function safeRequire(modulePath, description) {
 }
 
 // Безопасная загрузка основных модулей
-console.log('📋 Начало загрузки модулей сервера')
+// Init modules
 
 let db, initializeBucket, requestLogger, errorLogger, clientIPMiddleware
 
@@ -112,7 +109,7 @@ try {
 }
 
 // Загрузка маршрутов с детальным логированием
-console.log('📋 Начало загрузки маршрутов')
+// Load routes
 
 const routes = {}
 
@@ -153,6 +150,12 @@ const routesToLoad = [
     critical: false,
   },
   {
+    key: 'relocations',
+    path: './routes/relocations',
+    description: 'Relocations routes',
+    critical: false,
+  },
+  {
     key: 'supervisor',
     path: './routes/supervisor',
     description: 'Supervisor routes',
@@ -175,8 +178,6 @@ const routesToLoad = [
 // Загружаем каждый маршрут отдельно
 for (const route of routesToLoad) {
   try {
-    console.log(`🔍 Пытаемся загрузить: ${route.description}`)
-
     // Проверяем существование файла
     if (!fs.existsSync(route.path + '.js')) {
       console.warn(`⚠️ Файл не существует: ${route.path}.js`)
@@ -185,9 +186,7 @@ for (const route of routesToLoad) {
       }
       continue
     }
-
     routes[route.key] = safeRequire(route.path, route.description)
-    console.log(`✅ Маршрут загружен: ${route.key}`)
   } catch (error) {
     console.error(`❌ ОШИБКА ЗАГРУЗКИ МАРШРУТА ${route.key.toUpperCase()}:`)
     console.error('Путь:', route.path)
@@ -213,11 +212,7 @@ for (const route of routesToLoad) {
   }
 }
 
-console.log('📋 Загрузка маршрутов завершена')
-console.log(
-  'Успешно загружено маршрутов:',
-  Object.keys(routes).filter((key) => routes[key] !== null).length,
-)
+// Routes loaded
 
 // Environment variables validation
 const requiredEnvVars = ['DB_NAME', 'DB_USER', 'DB_PASSWORD']
@@ -232,7 +227,7 @@ const PORT = process.env.PORT || 3000
 const HTTPS_PORT = process.env.HTTPS_PORT || 443
 const isProduction = process.env.NODE_ENV === 'production'
 
-console.log('📋 Настройка Express приложения')
+// Configure Express
 
 // Trust proxy settings
 if (isProduction) {
@@ -296,7 +291,7 @@ try {
       },
     }),
   )
-  console.log('✅ Helmet middleware настроен')
+  // Helmet configured
 } catch (error) {
   console.error('❌ Ошибка настройки Helmet:', error.message)
 }
@@ -316,7 +311,7 @@ try {
       ],
     }),
   )
-  console.log('✅ CORS настроен')
+  // CORS configured
 } catch (error) {
   console.error('❌ Ошибка настройки CORS:', error.message)
 }
@@ -324,7 +319,7 @@ try {
 // Logging middleware
 try {
   app.use(morgan(isProduction ? 'combined' : 'dev'))
-  console.log('✅ Morgan logger настроен')
+  // Logger configured
 } catch (error) {
   console.error('❌ Ошибка настройки Morgan:', error.message)
 }
@@ -345,7 +340,7 @@ try {
     }),
   )
   app.use(express.urlencoded({ extended: true, limit: '10mb' }))
-  console.log('✅ Body parsing middleware настроен')
+  // Body parsing configured
 } catch (error) {
   console.error('❌ Ошибка настройки body parsing:', error.message)
 }
@@ -376,7 +371,7 @@ try {
     skipFailedRequests: false,
   })
   app.use(limiter)
-  console.log('✅ Rate limiting настроен')
+  // Rate limiting configured
 } catch (error) {
   console.error('❌ Ошибка настройки rate limiting:', error.message)
 }
@@ -393,12 +388,12 @@ if (fs.existsSync(uploadsPath)) {
         lastModified: true,
       }),
     )
-    console.log('✅ Static files настроены:', uploadsPath)
+    // Static files configured
   } catch (error) {
     console.error('❌ Ошибка настройки static files:', error.message)
   }
 } else {
-  console.warn(`⚠️ Папка uploads не найдена: ${uploadsPath}`)
+  // uploads folder not found (skipped)
 }
 
 // Custom middleware
@@ -416,14 +411,13 @@ try {
   app.use(memoryMonitor)
   app.use(databasePoolMonitor)
 
-  console.log('✅ Custom middleware настроен')
+  // Custom middleware configured
 } catch (error) {
   console.error('❌ Ошибка настройки custom middleware:', error.message)
 }
 
 // Health check
 app.get('/api/health', async (req, res) => {
-  console.log('🏥 Health check запрошен')
   const healthCheck = {
     status: 'OK',
     timestamp: new Date().toISOString(),
@@ -449,7 +443,7 @@ app.get('/api/health', async (req, res) => {
 })
 
 // Подключение маршрутов с обработкой ошибок
-console.log('📋 Подключение маршрутов к приложению')
+
 
 const routeMappings = [
   { path: '/', route: 'welcome', name: 'Welcome' },
@@ -466,6 +460,7 @@ const routeMappings = [
   { path: '/api/groups', route: 'groups', name: 'Groups' },
   { path: '/api/files', route: 'files', name: 'Files' },
   { path: '/api/documents', route: 'documents', name: 'Documents' },
+  { path: '/api/relocations', route: 'relocations', name: 'Relocations' },
   { path: '/api/supervisor', route: 'supervisor', name: 'Supervisor' },
   { path: '/api/roll-call', route: 'rollCall', name: 'Roll Call' },
   { path: '/api/test', route: 'testTelegram', name: 'Telegram Test' },
@@ -474,11 +469,7 @@ const routeMappings = [
 for (const mapping of routeMappings) {
   try {
     if (routes[mapping.route]) {
-      console.log(`🔗 Подключение ${mapping.name} routes к ${mapping.path}`)
       app.use(mapping.path, routes[mapping.route])
-      console.log(`✅ ${mapping.name} routes подключены успешно`)
-    } else {
-      console.warn(`⚠️ ${mapping.name} routes пропущены (не загружены)`)
     }
   } catch (error) {
     console.error(`❌ ОШИБКА ПОДКЛЮЧЕНИЯ ${mapping.name.toUpperCase()} ROUTES:`)
@@ -490,7 +481,6 @@ for (const mapping of routeMappings) {
 
 // 404 handler
 app.use('*', (req, res) => {
-  console.log(`❓ 404 - Маршрут не найден: ${req.method} ${req.originalUrl}`)
   res.status(404).json({
     error: 'Route not found',
     path: req.originalUrl,
@@ -538,12 +528,10 @@ app.use((error, req, res, next) => {
 // Функции инициализации
 async function checkDatabaseConnection() {
   try {
-    console.log('🔄 Проверка подключения к базе данных')
     if (!db || !db.pool) {
       throw new Error('Database pool не инициализирован')
     }
     await db.pool.query('SELECT 1')
-    console.log('✅ Подключение к базе данных установлено')
     return true
   } catch (error) {
     console.error('❌ Ошибка подключения к базе данных:', error.message)
@@ -553,9 +541,7 @@ async function checkDatabaseConnection() {
 
 async function initializeMinIO() {
   try {
-    console.log('🔄 Инициализация MinIO')
     await initializeBucket()
-    console.log('✅ MinIO инициализирован')
   } catch (error) {
     console.error('❌ Ошибка инициализации MinIO:', error.message)
     console.warn('⚠️ Некоторые функции файлов могут не работать')
@@ -608,9 +594,7 @@ process.on('SIGINT', () => gracefulShutdown('SIGINT'))
 // Server startup
 async function startServer() {
   try {
-    console.log('🚀 Запуск сервера')
-    console.log('Окружение:', process.env.NODE_ENV || 'development')
-    console.log('Порт:', PORT)
+    // server startup
 
     // Проверяем базу данных
     const dbConnected = await checkDatabaseConnection()
@@ -625,7 +609,6 @@ async function startServer() {
     // Инициализируем Telegram уведомления
     const telegramService = safeRequire('./services/telegramService', 'Telegram Service')
     if (telegramService) {
-      console.log('🤖 Инициализация Telegram уведомлений...')
       try {
         await telegramService.testConnection()
       } catch (error) {

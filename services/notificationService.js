@@ -43,13 +43,16 @@ class NotificationService {
         console.log(`📤 [DEV MODE] Также отправляем реальный email...`)
       }
 
-      // Проверяем настройки SMTP
-      if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
+      // Используем значения по умолчанию если переменные окружения не заданы
+      const smtpUser = process.env.SMTP_USER || 'dps@gubkin.uz'
+      const smtpPass = process.env.SMTP_PASS || '1234bobur$'
+      
+      if (!smtpUser || !smtpPass) {
         console.log(`⚠️ SMTP настройки не заданы, только логирование кода: ${code}`)
         return { success: true, messageId: 'no-smtp-config' }
       }
 
-      const fromAddress = process.env.SMTP_USER
+      const fromAddress = smtpUser
       const mailOptions = {
         from: fromAddress,
         to: email,
@@ -189,13 +192,16 @@ class NotificationService {
         console.log(`📤 [DEV MODE] Также отправляем реальный email...`)
       }
 
-      // Проверяем настройки SMTP
-      if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
+      // Используем значения по умолчанию если переменные окружения не заданы
+      const smtpUser = process.env.SMTP_USER || 'dps@gubkin.uz'
+      const smtpPass = process.env.SMTP_PASS || '1234bobur$'
+      
+      if (!smtpUser || !smtpPass) {
         console.log(`⚠️ SMTP настройки не заданы, только логирование пароля: ${newPassword}`)
         return { success: true, messageId: 'no-smtp-config' }
       }
 
-      const fromAddress = process.env.SMTP_USER
+      const fromAddress = smtpUser
       const mailOptions = {
         from: fromAddress,
         to: email,

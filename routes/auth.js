@@ -623,6 +623,100 @@ router.post('/forgot-password', async (req, res) => {
   }
 })
 
+// 7.2.1. Алиас для запроса сброса пароля (для совместимости с фронтендом)
+router.post('/request-password-reset', async (req, res) => {
+  try {
+    const { email } = req.body
+
+    if (!email) {
+      return res.status(400).json({ error: 'Email обязателен' })
+    }
+
+    // Валидация email
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({ error: 'Неверный формат email' })
+    }
+
+    // Проверяем существование пользователя
+    const userResult = await query(
+      'SELECT id, contact, contact_type FROM users WHERE contact = $1',
+      [email],
+    )
+
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Пользователь с таким email не найден' })
+    }
+
+    const user = userResult.rows[0]
+
+    // Проверяем rate limiting
+    try {
+      const rateLimitCheck = await query('SELECT check_rate_limits($1, $2)', [
+        req.ip,
+        'forgot_password',
+      ])
+
+      if (!rateLimitCheck.rows[0].check_rate_limits) {
+        return res.status(429).json({
+          error: 'Слишком много запросов. Попробуйте через 2 минуты.',
+          waitSeconds: 120,
+        })
+      }
+    } catch (rateLimitError) {
+      // Продолжаем без rate limiting если функция не существует
+      console.log('⚠️ Rate limiting функция недоступна:', rateLimitError.message)
+    }
+
+    // Генерируем и отправляем код
+    const { code, hashedCode, result } = await notificationService.sendVerificationCode(
+      user.contact,
+      user.contact_type,
+    )
+
+    if (!result.success) {
+      console.error('Ошибка отправки кода восстановления пароля:', result.error)
+      return res.status(500).json({ error: 'Ошибка отправки кода' })
+    }
+
+    console.log(`🔢 Код для восстановления пароля: ${code}, хэш: ${hashedCode}`)
+
+    // Сохраняем код в БД (без ограничения по времени)
+    await query(
+      `INSERT INTO verification_codes (contact, contact_type, code_hash, expires_at, ip_address, type) 
+       VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (contact) 
+       DO UPDATE SET 
+         contact_type = EXCLUDED.contact_type,
+         code_hash = EXCLUDED.code_hash, 
+         expires_at = EXCLUDED.expires_at, 
+         ip_address = EXCLUDED.ip_address,
+         type = EXCLUDED.type,
+         created_at = CURRENT_TIMESTAMP`,
+      [
+        user.contact,
+        user.contact_type,
+        hashedCode,
+        new Date(Date.now() + 365 * 24 * 60 * 60 * 1000), // 1 год вместо 10 минут
+        req.ip,
+        'password_reset',
+      ],
+    )
+
+    console.log(`📧 Код восстановления пароля отправлен на ${user.contact}`)
+
+    res.json({
+      message: 'Код подтверждения отправлен на ваш email',
+      contact: user.contact,
+      contactType: user.contact_type,
+      expiresIn: null, // Убираем ограничение по времени
+    })
+  } catch (error) {
+    console.error('Ошибка запроса восстановления пароля:', error)
+    res.status(500).json({ error: 'Внутренняя ошибка сервера' })
+  }
+})
+
 // 7.3. Проверка кода для сброса пароля (без аутентификации)
 router.post('/verify-reset-code', async (req, res) => {
   try {
