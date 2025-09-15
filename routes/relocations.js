@@ -78,10 +78,17 @@ router.get('/:id', validateUUID('id'), async (req, res) => {
       // Сначала пробуем получить из student_accommodations
       const currentAccResult = await query(
         `SELECT 
-          d.name AS dormitory_name,
-          d.type AS dormitory_type,
-          f.floor_number AS floor_number,
-          r.room_number,
+          -- Правильное получение общежития (через блок для ДПС2)
+          COALESCE(d2.name, d.name) AS dormitory_name,
+          COALESCE(d2.type, d.type) AS dormitory_type,
+          -- Правильное получение этажа (через блок для ДПС2)
+          COALESCE(f2.floor_number, f.floor_number) AS floor_number,
+          -- Правильное формирование номера комнаты для ДПС2 с блоками
+          CASE 
+            WHEN d.type = 'type_2' AND bl.block_number IS NOT NULL AND r.block_room_number IS NOT NULL 
+            THEN CONCAT(bl.block_number, '/', r.block_room_number)
+            ELSE r.room_number::text
+          END as room_number,
           b.bed_number,
           sa.created_at AS assigned_at
         FROM student_accommodations sa
@@ -89,6 +96,10 @@ router.get('/:id', validateUUID('id'), async (req, res) => {
         JOIN rooms r ON r.id = b.room_id
         JOIN floors f ON f.id = r.floor_id
         JOIN dormitories d ON d.id = f.dormitory_id
+        LEFT JOIN blocks bl ON bl.id = r.block_id
+        -- Для ДПС2: получаем этаж и общежитие через блок
+        LEFT JOIN floors f2 ON f2.id = bl.floor_id
+        LEFT JOIN dormitories d2 ON d2.id = f2.dormitory_id
         WHERE sa.student_id = $1 AND sa.is_active = true
         ORDER BY sa.created_at DESC
         LIMIT 1`,
@@ -123,16 +134,27 @@ router.get('/:id', validateUUID('id'), async (req, res) => {
         // Фоллбек: если нет в student_accommodations, ищем в beds
         const bedResult = await query(
           `SELECT 
-            d.name AS dormitory_name,
-            d.type AS dormitory_type,
-            f.floor_number AS floor_number,
-            r.room_number,
+            -- Правильное получение общежития (через блок для ДПС2)
+            COALESCE(d2.name, d.name) AS dormitory_name,
+            COALESCE(d2.type, d.type) AS dormitory_type,
+            -- Правильное получение этажа (через блок для ДПС2)
+            COALESCE(f2.floor_number, f.floor_number) AS floor_number,
+            -- Правильное формирование номера комнаты для ДПС2 с блоками
+            CASE 
+              WHEN d.type = 'type_2' AND bl.block_number IS NOT NULL AND r.block_room_number IS NOT NULL 
+              THEN CONCAT(bl.block_number, '/', r.block_room_number)
+              ELSE r.room_number::text
+            END as room_number,
             b.bed_number,
             b.assigned_at AS assigned_at
           FROM beds b
           JOIN rooms r ON r.id = b.room_id
           JOIN floors f ON f.id = r.floor_id
           JOIN dormitories d ON d.id = f.dormitory_id
+          LEFT JOIN blocks bl ON bl.id = r.block_id
+          -- Для ДПС2: получаем этаж и общежитие через блок
+          LEFT JOIN floors f2 ON f2.id = bl.floor_id
+          LEFT JOIN dormitories d2 ON d2.id = f2.dormitory_id
           WHERE b.student_id = $1 AND b.is_active = true AND b.is_occupied = true
           ORDER BY COALESCE(b.assigned_at, r.updated_at) DESC
           LIMIT 1`,
@@ -282,6 +304,10 @@ router.get('/', requireAdmin, async (req, res) => {
       LEFT JOIN rooms cr ON cr.id = cb.room_id
       LEFT JOIN floors cf ON cf.id = cr.floor_id
       LEFT JOIN dormitories cd ON cd.id = cf.dormitory_id
+      LEFT JOIN blocks cbl ON cbl.id = cr.block_id
+      -- Для ДПС2: получаем этаж и общежитие через блок
+      LEFT JOIN floors cf2 ON cf2.id = cbl.floor_id
+      LEFT JOIN dormitories cd2 ON cd2.id = cf2.dormitory_id
     `
 
     let where = 'WHERE 1=1'
@@ -381,10 +407,17 @@ router.get('/', requireAdmin, async (req, res) => {
         tr.bed_count as target_total_beds,
         tf.floor_number as target_floor_number,
         tb.bed_number as target_bed_number,
-        cd.name as current_dormitory_name,
-        cd.type as current_dormitory_type,
-        cr.room_number as current_room_number,
-        cf.floor_number as current_floor_number,
+        -- Правильное получение общежития (через блок для ДПС2)
+        COALESCE(cd2.name, cd.name) as current_dormitory_name,
+        COALESCE(cd2.type, cd.type) as current_dormitory_type,
+        -- Правильное формирование номера комнаты для ДПС2 с блоками
+        CASE 
+          WHEN COALESCE(cd2.type, cd.type) = 'type_2' AND cbl.block_number IS NOT NULL AND cr.block_room_number IS NOT NULL 
+          THEN CONCAT(cbl.block_number, '/', cr.block_room_number)
+          ELSE cr.room_number::text
+        END as current_room_number,
+        -- Правильное получение этажа (через блок для ДПС2)
+        COALESCE(cf2.floor_number, cf.floor_number) as current_floor_number,
         cb.bed_number as current_bed_number,
         sa.check_in_date as current_assigned_at
       ${baseQuery}
@@ -432,7 +465,6 @@ router.get('/', requireAdmin, async (req, res) => {
         dormitoryType: row.target_dormitory_type,
         floorNumber: row.target_floor_number,
         roomNumber: row.target_room_number,
-        bedNumber: row.target_bed_number,
         totalBeds: row.target_total_beds
       } : null
     }))
@@ -713,10 +745,6 @@ router.get('/:id', validateUUID('id'), requireOwnershipOrAdmin('student_id', 're
             number: relocation.target_floor_number
           },
           residents: residents
-        } : null,
-        targetBed: relocation.target_bed_number ? {
-          id: relocation.target_bed_id,
-          bedNumber: relocation.target_bed_number
         } : null
       }
     }
