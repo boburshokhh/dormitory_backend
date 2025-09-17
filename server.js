@@ -173,6 +173,7 @@ const routesToLoad = [
     description: 'Telegram Test routes',
     critical: false,
   },
+  { key: 'hikvision', path: './hikvision-routes', description: 'Hikvision routes', critical: false },
 ]
 
 // Загружаем каждый маршрут отдельно
@@ -464,6 +465,7 @@ const routeMappings = [
   { path: '/api/supervisor', route: 'supervisor', name: 'Supervisor' },
   { path: '/api/roll-call', route: 'rollCall', name: 'Roll Call' },
   { path: '/api/test', route: 'testTelegram', name: 'Telegram Test' },
+  { path: '/api/hikvision', route: 'hikvision', name: 'Hikvision' },
 ]
 
 for (const mapping of routeMappings) {

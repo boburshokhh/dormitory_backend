@@ -1,0 +1,47 @@
+{
+    "code": "0",
+    "msg": "Success",
+    "data": {
+      "total": 4,
+      "pageNo": 1,
+      "pageSize": 5,
+      "list": [
+        {
+          "acsDevIndexCode": "4",
+          "acsDevName": "Муж вход",
+          "acsDevIp": "192.168.1.96",
+          "acsDevPort": "8000",
+          "treatyType": "hiksdk_net",
+          "acsDevCode": "DS-K1T671M20231019V030700ENAX3095908",
+          "status ": 1
+        },
+        {
+          "acsDevIndexCode": "3",
+          "acsDevName": "Муж выход",
+          "acsDevIp": "192.168.1.95",
+          "acsDevPort": "8000",
+          "treatyType": "hiksdk_net",
+          "acsDevCode": "DS-K1T671M20231019V030700ENAX3095885",
+          "status ": 1
+        },
+        {
+          "acsDevIndexCode": "2",
+          "acsDevName": "Жен вход",
+          "acsDevIp": "192.168.1.91",
+          "acsDevPort": "8000",
+          "treatyType": "hiksdk_net",
+          "acsDevCode": "DS-K1T671M20231019V030700ENAX3095927",
+          "status ": 1
+        },
+        {
+          "acsDevIndexCode": "1",
+          "acsDevName": "Жен выход",
+          "acsDevIp": "192.168.1.93",
+          "acsDevPort": "8000",
+          "treatyType": "hiksdk_net",
+          "acsDevCode": "DS-K1T671M20231019V030700ENAX3095868",
+          "status ": 1
+        }
+      ]
+    }
+  }

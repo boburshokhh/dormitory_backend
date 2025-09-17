@@ -1,0 +1,300 @@
+{
+  "info": {
+    "_postman_id": "hikvision-backend-events",
+    "name": "Hikvision Backend - Turnstile Events (SSE + Polling)",
+    "description": "Коллекция для работы с бэкендом: запуск поллера событий турникета, SSE-стрим, статус, а также вспомогательные запросы (двери/устройства/константы).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "0. Константы и справка",
+      "item": [
+        {
+          "name": "Получить константы (типы событий/статусы)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/hikvision/constants",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "hikvision",
+                "constants"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "1. Поллер событий (вход/выход)",
+      "item": [
+        {
+          "name": "Старт поллера",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"doorIndexCodes\": {{door_codes}},\n  \"intervalMs\": 10000,\n  \"eventTypes\": [{{event_type_granted}}, {{event_type_denied}}]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/hikvision/turnstile/poll/start",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "hikvision",
+                "turnstile",
+                "poll",
+                "start"
+              ]
+            },
+            "description": "Запуск фонового поллера событий турникета по указанным дверям."
+          },
+          "response": []
+        },
+        {
+          "name": "Стоп поллера",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/hikvision/turnstile/poll/stop",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "hikvision",
+                "turnstile",
+                "poll",
+                "stop"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Статус поллера",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/hikvision/turnstile/poll/status",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "hikvision",
+                "turnstile",
+                "poll",
+                "status"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "2. SSE поток (живые события)",
+      "item": [
+        {
+          "name": "Подключение к SSE (stream)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "text/event-stream",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/hikvision/turnstile/stream",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "hikvision",
+                "turnstile",
+                "stream"
+              ]
+            },
+            "description": "Открывает SSE соединение. Postman может не отображать поток полноценно; лучше тестировать в браузере/фронтенде."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "3. Вспомогательные запросы (двери/устройства)",
+      "item": [
+        {
+          "name": "Список дверей",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/hikvision/doors?pageNo=1&pageSize=50",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "hikvision",
+                "doors"
+              ],
+              "query": [
+                { "key": "pageNo", "value": "1" },
+                { "key": "pageSize", "value": "50" }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Инфо о двери по коду",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/hikvision/doors/{{door_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "hikvision",
+                "doors",
+                "{{door_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Список устройств контроля доступа",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/hikvision/devices?pageNo=1&pageSize=50",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "hikvision",
+                "devices"
+              ],
+              "query": [
+                { "key": "pageNo", "value": "1" },
+                { "key": "pageSize", "value": "50" }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "4. Прямые запросы событий (по времени/дверям)",
+      "item": [
+        {
+          "name": "События турникета (универсальные)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/hikvision/turnstile/events?startTime={{start_time}}&endTime={{end_time}}&eventType={{event_type_granted}}&doorIndexCodes={{door_codes}}&pageNo=1&pageSize=50",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "hikvision",
+                "turnstile",
+                "events"
+              ],
+              "query": [
+                { "key": "startTime", "value": "{{start_time}}" },
+                { "key": "endTime", "value": "{{end_time}}" },
+                { "key": "eventType", "value": "{{event_type_granted}}" },
+                { "key": "doorIndexCodes", "value": "{{door_codes}}" },
+                { "key": "pageNo", "value": "1" },
+                { "key": "pageSize", "value": "50" }
+              ]
+            },
+            "description": "GET-обёртка вокруг вызова к Hikvision для получения событий турникета."
+          },
+          "response": []
+        },
+        {
+          "name": "Пользователи по турникету (агрегация)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/hikvision/turnstiles/{{door_id}}/users?startTime={{start_time}}&endTime={{end_time}}&pageNo=1&pageSize=100",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "hikvision",
+                "turnstiles",
+                "{{door_id}}",
+                "users"
+              ],
+              "query": [
+                { "key": "startTime", "value": "{{start_time}}" },
+                { "key": "endTime", "value": "{{end_time}}" },
+                { "key": "pageNo", "value": "1" },
+                { "key": "pageSize", "value": "100" }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:3000", "type": "string" },
+    { "key": "jwt", "value": "<PUT_YOUR_JWT_HERE>", "type": "string" },
+    { "key": "door_codes", "value": "[\"11\", \"482\"]", "type": "string" },
+    { "key": "door_id", "value": "11", "type": "string" },
+    { "key": "event_type_granted", "value": "198914", "type": "string" },
+    { "key": "event_type_denied", "value": "198915", "type": "string" },
+    { "key": "start_time", "value": "2025-09-16T00:00:00+05:00", "type": "string" },
+    { "key": "end_time", "value": "2025-09-16T23:59:59+05:00", "type": "string" }
+  ]
+}
+
+

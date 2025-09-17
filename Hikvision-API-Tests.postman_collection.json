@@ -1,0 +1,746 @@
+{
+	"info": {
+		"_postman_id": "hikvision-api-tests",
+		"name": "Hikvision API Tests",
+		"description": "Коллекция для тестирования API интеграции с Hikvision",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "1. Получение пользователей",
+			"item": [
+				{
+					"name": "Все пользователи (базовый запрос)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/hikvision/users?pageNo=1&pageSize=10",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"hikvision",
+								"users"
+							],
+							"query": [
+								{
+									"key": "pageNo",
+									"value": "1"
+								},
+								{
+									"key": "pageSize",
+									"value": "10"
+								}
+							]
+						},
+						"description": "Получение всех пользователей с пагинацией"
+					},
+					"response": []
+				},
+				{
+					"name": "Поиск пользователей по имени",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/hikvision/users?pageNo=1&pageSize=10&personName=Иван",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"hikvision",
+								"users"
+							],
+							"query": [
+								{
+									"key": "pageNo",
+									"value": "1"
+								},
+								{
+									"key": "pageSize",
+									"value": "10"
+								},
+								{
+									"key": "personName",
+									"value": "Иван"
+								}
+							]
+						},
+						"description": "Поиск пользователей по имени (нечеткий поиск)"
+					},
+					"response": []
+				},
+				{
+					"name": "Поиск пользователя по ID",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/hikvision/users?pageNo=1&pageSize=10&personId=1149",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"hikvision",
+								"users"
+							],
+							"query": [
+								{
+									"key": "pageNo",
+									"value": "1"
+								},
+								{
+									"key": "pageSize",
+									"value": "10"
+								},
+								{
+									"key": "personId",
+									"value": "1149"
+								}
+							]
+						},
+						"description": "Поиск конкретного пользователя по ID"
+					},
+					"response": []
+				},
+				{
+					"name": "Поиск по организации",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/hikvision/users?pageNo=1&pageSize=10&orgIndexCode=1",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"hikvision",
+								"users"
+							],
+							"query": [
+								{
+									"key": "pageNo",
+									"value": "1"
+								},
+								{
+									"key": "pageSize",
+									"value": "10"
+								},
+								{
+									"key": "orgIndexCode",
+									"value": "1"
+								}
+							]
+						},
+						"description": "Поиск пользователей по организации"
+					},
+					"response": []
+				}
+			],
+			"description": "Тесты для получения списка пользователей"
+		},
+		{
+			"name": "2. Получение событий",
+			"item": [
+				{
+					"name": "События доступа (Access Granted by Card)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/hikvision/events?startTime=2024-01-01T00:00:00+05:00&endTime=2024-01-31T23:59:59+05:00&eventType=198914&doorIndexCodes=[\"1\",\"2\"]&pageNo=1&pageSize=10",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"hikvision",
+								"events"
+							],
+							"query": [
+								{
+									"key": "startTime",
+									"value": "2024-01-01T00:00:00+05:00"
+								},
+								{
+									"key": "endTime",
+									"value": "2024-01-31T23:59:59+05:00"
+								},
+								{
+									"key": "eventType",
+									"value": "198914"
+								},
+								{
+									"key": "doorIndexCodes",
+									"value": "[\"1\",\"2\"]"
+								},
+								{
+									"key": "pageNo",
+									"value": "1"
+								},
+								{
+									"key": "pageSize",
+									"value": "10"
+								}
+							]
+						},
+						"description": "Получение событий успешного доступа по карте"
+					},
+					"response": []
+				},
+				{
+					"name": "События отказа в доступе (Access Denied by Face)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/hikvision/events?startTime=2024-01-01T00:00:00+05:00&endTime=2024-01-31T23:59:59+05:00&eventType=197151&doorIndexCodes=[\"1\"]&pageNo=1&pageSize=10",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"hikvision",
+								"events"
+							],
+							"query": [
+								{
+									"key": "startTime",
+									"value": "2024-01-01T00:00:00+05:00"
+								},
+								{
+									"key": "endTime",
+									"value": "2024-01-31T23:59:59+05:00"
+								},
+								{
+									"key": "eventType",
+									"value": "197151"
+								},
+								{
+									"key": "doorIndexCodes",
+									"value": "[\"1\"]"
+								},
+								{
+									"key": "pageNo",
+									"value": "1"
+								},
+								{
+									"key": "pageSize",
+									"value": "10"
+								}
+							]
+						},
+						"description": "Получение событий отказа в доступе по лицу"
+					},
+					"response": []
+				},
+				{
+					"name": "События конкретного пользователя",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/hikvision/events?startTime=2024-01-01T00:00:00+05:00&endTime=2024-01-31T23:59:59+05:00&eventType=198914&doorIndexCodes=[\"1\",\"2\"]&personName=Иванов&pageNo=1&pageSize=10",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"hikvision",
+								"events"
+							],
+							"query": [
+								{
+									"key": "startTime",
+									"value": "2024-01-01T00:00:00+05:00"
+								},
+								{
+									"key": "endTime",
+									"value": "2024-01-31T23:59:59+05:00"
+								},
+								{
+									"key": "eventType",
+									"value": "198914"
+								},
+								{
+									"key": "doorIndexCodes",
+									"value": "[\"1\",\"2\"]"
+								},
+								{
+									"key": "personName",
+									"value": "Иванов"
+								},
+								{
+									"key": "pageNo",
+									"value": "1"
+								},
+								{
+									"key": "pageSize",
+									"value": "10"
+								}
+							]
+						},
+						"description": "Получение событий конкретного пользователя"
+					},
+					"response": []
+				},
+				{
+					"name": "События за сегодня",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/hikvision/events?startTime={{today_start}}&endTime={{today_end}}&eventType=198914&doorIndexCodes=[\"1\",\"2\"]&pageNo=1&pageSize=50",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"hikvision",
+								"events"
+							],
+							"query": [
+								{
+									"key": "startTime",
+									"value": "{{today_start}}"
+								},
+								{
+									"key": "endTime",
+									"value": "{{today_end}}"
+								},
+								{
+									"key": "eventType",
+									"value": "198914"
+								},
+								{
+									"key": "doorIndexCodes",
+									"value": "[\"1\",\"2\"]"
+								},
+								{
+									"key": "pageNo",
+									"value": "1"
+								},
+								{
+									"key": "pageSize",
+									"value": "50"
+								}
+							]
+						},
+						"description": "Получение событий за сегодняшний день"
+					},
+					"response": []
+				}
+			],
+			"description": "Тесты для получения событий доступа"
+		},
+		{
+			"name": "3. Синхронизация данных",
+			"item": [
+				{
+					"name": "Синхронизация пользователей",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"pageNo\": 1,\n    \"pageSize\": 10,\n    \"personName\": \"Иван\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/hikvision/sync/users",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"hikvision",
+								"sync",
+								"users"
+							]
+						},
+						"description": "Синхронизация пользователей из Hikvision в PostgreSQL"
+					},
+					"response": []
+				},
+				{
+					"name": "Синхронизация событий",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"startTime\": \"2024-01-01T00:00:00+05:00\",\n    \"endTime\": \"2024-01-31T23:59:59+05:00\",\n    \"eventType\": 198914,\n    \"doorIndexCodes\": [\"1\", \"2\"],\n    \"pageNo\": 1,\n    \"pageSize\": 50\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/hikvision/sync/events",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"hikvision",
+								"sync",
+								"events"
+							]
+						},
+						"description": "Синхронизация событий из Hikvision в PostgreSQL"
+					},
+					"response": []
+				},
+				{
+					"name": "Синхронизация событий за сегодня",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"startTime\": \"{{today_start}}\",\n    \"endTime\": \"{{today_end}}\",\n    \"eventType\": 198914,\n    \"doorIndexCodes\": [\"1\", \"2\"],\n    \"pageNo\": 1,\n    \"pageSize\": 100\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/hikvision/sync/events",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"hikvision",
+								"sync",
+								"events"
+							]
+						},
+						"description": "Синхронизация событий за сегодняшний день"
+					},
+					"response": []
+				}
+			],
+			"description": "Тесты для синхронизации данных"
+		},
+		{
+			"name": "4. Статистика и отчеты",
+			"item": [
+				{
+					"name": "Статистика посещений",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/hikvision/stats?startDate=2024-01-01&endDate=2024-01-31",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"hikvision",
+								"stats"
+							],
+							"query": [
+								{
+									"key": "startDate",
+									"value": "2024-01-01"
+								},
+								{
+									"key": "endDate",
+									"value": "2024-01-31"
+								}
+							]
+						},
+						"description": "Получение статистики посещений из PostgreSQL"
+					},
+					"response": []
+				},
+				{
+					"name": "Статистика конкретного пользователя",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/hikvision/stats?startDate=2024-01-01&endDate=2024-01-31&personId=1149",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"hikvision",
+								"stats"
+							],
+							"query": [
+								{
+									"key": "startDate",
+									"value": "2024-01-01"
+								},
+								{
+									"key": "endDate",
+									"value": "2024-01-31"
+								},
+								{
+									"key": "personId",
+									"value": "1149"
+								}
+							]
+						},
+						"description": "Получение статистики конкретного пользователя"
+					},
+					"response": []
+				},
+				{
+					"name": "Данные посещения из БД",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/hikvision/attendance?startDate=2024-01-01&endDate=2024-01-31&limit=50&offset=0",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"hikvision",
+								"attendance"
+							],
+							"query": [
+								{
+									"key": "startDate",
+									"value": "2024-01-01"
+								},
+								{
+									"key": "endDate",
+									"value": "2024-01-31"
+								},
+								{
+									"key": "limit",
+									"value": "50"
+								},
+								{
+									"key": "offset",
+									"value": "0"
+								}
+							]
+						},
+						"description": "Получение данных посещения из PostgreSQL"
+					},
+					"response": []
+				}
+			],
+			"description": "Тесты для статистики и отчетов"
+		},
+		{
+			"name": "5. Тесты ошибок",
+			"item": [
+				{
+					"name": "События без обязательных параметров",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/hikvision/events?pageNo=1&pageSize=10",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"hikvision",
+								"events"
+							],
+							"query": [
+								{
+									"key": "pageNo",
+									"value": "1"
+								},
+								{
+									"key": "pageSize",
+									"value": "10"
+								}
+							]
+						},
+						"description": "Тест ошибки - отсутствуют обязательные параметры"
+					},
+					"response": []
+				},
+				{
+					"name": "События без eventType",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/hikvision/events?startTime=2024-01-01T00:00:00+05:00&endTime=2024-01-31T23:59:59+05:00&doorIndexCodes=[\"1\"]&pageNo=1&pageSize=10",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"hikvision",
+								"events"
+							],
+							"query": [
+								{
+									"key": "startTime",
+									"value": "2024-01-01T00:00:00+05:00"
+								},
+								{
+									"key": "endTime",
+									"value": "2024-01-31T23:59:59+05:00"
+								},
+								{
+									"key": "doorIndexCodes",
+									"value": "[\"1\"]"
+								},
+								{
+									"key": "pageNo",
+									"value": "1"
+								},
+								{
+									"key": "pageSize",
+									"value": "10"
+								}
+							]
+						},
+						"description": "Тест ошибки - отсутствует eventType"
+					},
+					"response": []
+				},
+				{
+					"name": "События без doorIndexCodes",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/hikvision/events?startTime=2024-01-01T00:00:00+05:00&endTime=2024-01-31T23:59:59+05:00&eventType=198914&pageNo=1&pageSize=10",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"hikvision",
+								"events"
+							],
+							"query": [
+								{
+									"key": "startTime",
+									"value": "2024-01-01T00:00:00+05:00"
+								},
+								{
+									"key": "endTime",
+									"value": "2024-01-31T23:59:59+05:00"
+								},
+								{
+									"key": "eventType",
+									"value": "198914"
+								},
+								{
+									"key": "pageNo",
+									"value": "1"
+								},
+								{
+									"key": "pageSize",
+									"value": "10"
+								}
+							]
+						},
+						"description": "Тест ошибки - отсутствует doorIndexCodes"
+					},
+					"response": []
+				},
+				{
+					"name": "Неправильный формат doorIndexCodes",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/hikvision/events?startTime=2024-01-01T00:00:00+05:00&endTime=2024-01-31T23:59:59+05:00&eventType=198914&doorIndexCodes=invalid_json&pageNo=1&pageSize=10",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"hikvision",
+								"events"
+							],
+							"query": [
+								{
+									"key": "startTime",
+									"value": "2024-01-01T00:00:00+05:00"
+								},
+								{
+									"key": "endTime",
+									"value": "2024-01-31T23:59:59+05:00"
+								},
+								{
+									"key": "eventType",
+									"value": "198914"
+								},
+								{
+									"key": "doorIndexCodes",
+									"value": "invalid_json"
+								},
+								{
+									"key": "pageNo",
+									"value": "1"
+								},
+								{
+									"key": "pageSize",
+									"value": "10"
+								}
+							]
+						},
+						"description": "Тест ошибки - неправильный формат doorIndexCodes"
+					},
+					"response": []
+				}
+			],
+			"description": "Тесты для проверки обработки ошибок"
+		}
+	],
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					"// Генерируем временные переменные для сегодняшнего дня",
+					"const now = new Date();",
+					"const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());",
+					"const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);",
+					"",
+					"pm.environment.set('today_start', todayStart.toISOString());",
+					"pm.environment.set('today_end', todayEnd.toISOString());"
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:3000",
+			"type": "string"
+		},
+		{
+			"key": "today_start",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "today_end",
+			"value": "",
+			"type": "string"
+		}
+	]
+}

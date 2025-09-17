@@ -13,7 +13,7 @@ router.get('/', async (req, res) => {
 
     const offset = (page - 1) * limit
 
-    let whereClause = 'WHERE r.is_active = true'
+    let whereClause = 'WHERE r.is_active = true AND r.is_reserved = false'
     const params = []
     let paramCount = 0
 
@@ -158,9 +158,10 @@ router.get('/:id/residents', async (req, res) => {
       return res.status(404).json({ error: 'Комната не найдена' })
     }
 
-    // Список жильцов
+    // Список коек и жильцов (все активные койки; занятость передаём отдельным полем)
     const residentsRes = await query(
       `SELECT b.bed_number,
+              b.is_occupied,
               u.id AS user_id,
               u.first_name,
               u.last_name,
@@ -171,7 +172,7 @@ router.get('/:id/residents', async (req, res) => {
               b.assigned_at
        FROM beds b
        LEFT JOIN users u ON u.id = b.student_id
-       WHERE b.room_id = $1 AND b.is_active = true AND b.is_occupied = true
+       WHERE b.room_id = $1 AND b.is_active = true
        ORDER BY b.bed_number`,
       [id],
     )
@@ -189,6 +190,7 @@ router.get('/:id/residents', async (req, res) => {
         },
         residents: residentsRes.rows.map((r) => ({
           bedNumber: r.bed_number,
+          isOccupied: r.is_occupied === true,
           userId: r.user_id,
           fullName: `${r.last_name || ''} ${r.first_name || ''} ${r.middle_name || ''}`.trim(),
           studentId: r.student_id,

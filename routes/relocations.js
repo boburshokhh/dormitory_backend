@@ -42,11 +42,16 @@ router.get('/:id', validateUUID('id'), async (req, res) => {
     const result = await query(
       `SELECT 
         r.*,
-        -- Размещение по переезду
-        td.name AS target_dormitory_name,
-        td.type AS target_dormitory_type,
-        tf.floor_number AS target_floor_number,
-        tr.room_number AS target_room_number,
+        -- Размещение по переезду (с правильной обработкой ДПС2)
+        COALESCE(td2.name, td.name) AS target_dormitory_name,
+        COALESCE(td2.type, td.type) AS target_dormitory_type,
+        COALESCE(tf2.floor_number, tf.floor_number) AS target_floor_number,
+        -- Правильное формирование номера комнаты для ДПС2 с блоками
+        CASE 
+          WHEN COALESCE(td2.type, td.type) = 'type_2' AND tbl.block_number IS NOT NULL AND tr.block_room_number IS NOT NULL 
+          THEN CONCAT(tbl.block_number, '/', tr.block_room_number)
+          ELSE tr.room_number::text
+        END AS target_room_number,
         tr.bed_count AS target_total_beds,
         -- Информация о студенте
         u.first_name,
@@ -58,10 +63,14 @@ router.get('/:id', validateUUID('id'), async (req, res) => {
         u.group_name
       FROM relocations r
       LEFT JOIN users u ON u.id = r.student_id
-      -- Размещение по переезду
+      -- Размещение по переезду (с поддержкой блоков для ДПС2)
       LEFT JOIN rooms tr ON tr.id = r.target_room_id
       LEFT JOIN floors tf ON tf.id = tr.floor_id
       LEFT JOIN dormitories td ON td.id = tf.dormitory_id
+      LEFT JOIN blocks tbl ON tbl.id = tr.block_id
+      -- Для ДПС2: получаем этаж и общежитие через блок
+      LEFT JOIN floors tf2 ON tf2.id = tbl.floor_id
+      LEFT JOIN dormitories td2 ON td2.id = tf2.dormitory_id
       WHERE r.id = $1 AND r.student_id = $2`,
       [id, userId]
     )
@@ -789,7 +798,7 @@ router.put('/:id/review', validateUUID('id'), requireAdmin, async (req, res) => 
       const { rows, rowCount } = await client.query('SELECT * FROM relocations WHERE id = $1 FOR UPDATE', [id])
       if (rowCount === 0) throw new Error('Not found')
       const relocation = rows[0]
-      if (relocation.status !== 'pending') throw new Error('Already reviewed')
+      if (relocation.status !== 'submitted') throw new Error('Already reviewed')
 
       if (status === 'rejected') {
         await client.query(
