@@ -800,51 +800,13 @@ router.put('/:id/review', validateUUID('id'), requireAdmin, async (req, res) => 
       const relocation = rows[0]
       if (relocation.status !== 'submitted') throw new Error('Already reviewed')
 
-      if (status === 'rejected') {
-        await client.query(
-          `UPDATE relocations SET status = 'rejected', reviewed_by = $1, reviewed_at = now(), admin_comment = $2, updated_at = now() WHERE id = $3`,
-          [req.user.id, adminComment, id],
-        )
-        return { status: 'rejected' }
-      }
-
-      // approve: назначаем свободную койку в целевой комнате и снимаем текущую
-      const freeBedRes = await client.query(
-        `SELECT id FROM beds WHERE room_id = $1 AND is_active = true AND is_occupied = false ORDER BY bed_number LIMIT 1`,
-        [relocation.target_room_id],
-      )
-      if (freeBedRes.rowCount === 0) throw new Error('No free beds in target room')
-      const newBedId = freeBedRes.rows[0].id
-
-      // Освобождаем старую койку
-      if (relocation.current_bed_id) {
-        await client.query(
-          `UPDATE beds SET is_occupied = false, student_id = NULL, updated_at = now() WHERE id = $1`,
-          [relocation.current_bed_id],
-        )
-      }
-
-      // Назначаем новую койку
+      // Просто меняем статус без изменений в связанных таблицах
       await client.query(
-        `UPDATE beds SET is_occupied = true, student_id = $1, assigned_at = now(), updated_at = now() WHERE id = $2`,
-        [relocation.student_id, newBedId],
+        `UPDATE relocations SET status = $1, reviewed_by = $2, reviewed_at = now(), admin_comment = $3, updated_at = now() WHERE id = $4`,
+        [status, req.user.id, adminComment, id],
       )
 
-      // Обновляем запись размещения студента
-      if (relocation.current_accommodation_id) {
-        await client.query(
-          `UPDATE student_accommodations SET bed_id = $1, updated_at = now() WHERE id = $2`,
-          [newBedId, relocation.current_accommodation_id],
-        )
-      }
-
-      // Обновляем заявку
-      await client.query(
-        `UPDATE relocations SET status = 'approved', reviewed_by = $1, reviewed_at = now(), admin_comment = $2, updated_at = now() WHERE id = $3`,
-        [req.user.id, adminComment, id],
-      )
-
-      return { status: 'approved', newBedId }
+      return { status }
     })
 
     res.json({ success: true, data: result })
@@ -854,10 +816,8 @@ router.put('/:id/review', validateUUID('id'), requireAdmin, async (req, res) => 
       ? 'Заявка не найдена'
       : /Already reviewed/.test(error.message)
       ? 'Заявка уже рассмотрена'
-      : error.message === 'No free beds in target room'
-      ? 'Нет свободных мест в выбранной комнате'
       : 'Ошибка рассмотрения заявки'
-    res.status(/Not found|Already reviewed|No free beds/.test(error.message) ? 400 : 500).json({ success: false, error: message })
+    res.status(/Not found|Already reviewed/.test(error.message) ? 400 : 500).json({ success: false, error: message })
   }
 })
 

@@ -640,7 +640,9 @@ router.get('/turnstile/events', async (req, res) => {
             pageNo = 1,
             pageSize = 100,
             temperatureStatus = STATUS_VALUES.TEMPERATURE.UNKNOWN,
-            maskStatus = STATUS_VALUES.MASK.UNKNOWN
+            maskStatus = STATUS_VALUES.MASK.UNKNOWN,
+            personNameExact = 'false', // Новое: точное совпадение ФИО
+            uniqueByPerson = 'false'   // Новое: вернуть по одному (последнему) событию на пользователя
         } = req.query;
 
         // Валидация обязательных параметров
@@ -705,6 +707,25 @@ router.get('/turnstile/events', async (req, res) => {
             const list = result?.data?.data?.list;
             if (Array.isArray(list)) {
                 for (let i = 0; i < list.length; i++) list[i] = normalizePersonNameFields(list[i]);
+
+                // Фильтр: точное совпадение ФИО (без учета регистра)
+                if (String(personNameExact).toLowerCase() === 'true' && personName) {
+                    const q = String(personName).trim().toLowerCase();
+                    result.data.data.list = list.filter(ev => String(ev.personName || '').toLowerCase() === q || String(ev.personNameNormalized || '').toLowerCase() === q);
+                }
+
+                // Агрегация: только по одному (последнему) событию на пользователя
+                if (String(uniqueByPerson).toLowerCase() === 'true') {
+                    const byPerson = new Map();
+                    for (const ev of result.data.data.list) {
+                        const pid = ev.personId;
+                        if (!pid) continue;
+                        const prev = byPerson.get(pid);
+                        if (!prev || new Date(ev.eventTime) > new Date(prev.eventTime)) byPerson.set(pid, ev);
+                    }
+                    result.data.data.list = Array.from(byPerson.values());
+                    result.data.data.total = result.data.data.list.length;
+                }
             }
         } catch {}
 
@@ -735,7 +756,9 @@ router.post('/turnstile/events', async (req, res) => {
             temperatureStatus = STATUS_VALUES.TEMPERATURE.UNKNOWN,
             wearMaskStatus = STATUS_VALUES.MASK.UNKNOWN,
             sortField = 'SwipeTime',
-            orderType = 1
+            orderType = 1,
+            personNameExact = false, // Новое
+            uniqueByPerson = false   // Новое
         } = req.body || {};
 
         if (!startTime || !endTime) {
@@ -761,7 +784,7 @@ router.post('/turnstile/events', async (req, res) => {
                 success: false,
                 error: 'Параметр doorIndexCodes обязателен и должен быть массивом',
                 example: {
-                    doorIndexCodes: ["1", "2"]
+                    doorIndexCodes: ['1', '2']
                 }
             });
         }
@@ -779,11 +802,25 @@ router.post('/turnstile/events', async (req, res) => {
             sortField,
             orderType: parseInt(orderType)
         });
-        // Нормализуем ФИО во всех событиях
+        // Нормализуем ФИО во всех событиях + новые фильтры
         try {
             const list = result?.data?.data?.list;
             if (Array.isArray(list)) {
                 for (let i = 0; i < list.length; i++) list[i] = normalizePersonNameFields(list[i]);
+
+                // Удалено: фильтрация по personNameExact (точное совпадение ФИО)
+
+                if (Boolean(uniqueByPerson)) {
+                    const byPerson = new Map();
+                    for (const ev of result.data.data.list) {
+                        const pid = ev.personId;
+                        if (!pid) continue;
+                        const prev = byPerson.get(pid);
+                        if (!prev || new Date(ev.eventTime) > new Date(prev.eventTime)) byPerson.set(pid, ev);
+                    }
+                    result.data.data.list = Array.from(byPerson.values());
+                    result.data.data.total = result.data.data.list.length;
+                }
             }
         } catch {}
 
@@ -1109,6 +1146,85 @@ router.get('/turnstile/poll/status', async (req, res) => {
         res.json(result);
     } catch (error) {
         res.status(500).json({ success: false, error: 'Ошибка статуса поллера', message: error.message });
+    }
+});
+
+/**
+ * История событий конкретного человека (по personId)
+ * GET /api/hikvision/turnstile/person/:personId/events
+ */
+router.get('/turnstile/person/:personId/events', async (req, res) => {
+    try {
+        const { personId } = req.params;
+        const {
+            startTime,
+            endTime,
+            doorIndexCodes, // JSON строка массива или отсутствует
+            pageNo = 1,
+            pageSize = 50,
+            eventType = 196893 // по умолчанию проход
+        } = req.query;
+
+        if (!personId) {
+            return res.status(400).json({ success: false, error: 'personId обязателен' });
+        }
+        if (!startTime || !endTime) {
+            return res.status(400).json({
+                success: false,
+                error: 'Параметры startTime и endTime обязательны',
+                example: {
+                    startTime: '2024-01-01T00:00:00+05:00',
+                    endTime: '2024-01-31T23:59:59+05:00'
+                }
+            });
+        }
+
+        let doorCodes = undefined;
+        if (doorIndexCodes) {
+            try { doorCodes = JSON.parse(doorIndexCodes); } catch (e) {
+                return res.status(400).json({ success: false, error: 'doorIndexCodes должен быть валидным JSON массивом' });
+            }
+        }
+
+        const params = {
+            startTime,
+            endTime,
+            eventType: parseInt(eventType),
+            doorIndexCodes: Array.isArray(doorCodes) && doorCodes.length > 0 ? doorCodes : undefined,
+            pageNo: parseInt(pageNo),
+            pageSize: parseInt(pageSize)
+        };
+
+        // Если не передали двери, попробуем получить первые 500 дверей и подставить
+        if (!params.doorIndexCodes) {
+            try {
+                const doorsRes = await hikvisionIntegration.getDoorsFromHikvision({ pageNo: 1, pageSize: 500 });
+                const list = doorsRes?.data?.data?.list || doorsRes?.data?.list || [];
+                params.doorIndexCodes = list.map(d => String(d.doorIndexCode || d.indexCode)).filter(Boolean).slice(0, 10);
+            } catch { /* игнорируем, оставим undefined и дадим API решить */ }
+        }
+
+        const hk = await hikvisionIntegration.getTurnstileEventsFromHikvision(params);
+        if (!hk?.success) {
+            return res.status(502).json({ success: false, error: 'Ошибка получения событий от Hikvision', message: hk?.message, hikvision: { code: hk?.data?.code, msg: hk?.data?.msg } });
+        }
+
+        let list = hk?.data?.data?.list || [];
+        // Серверная фильтрация по personId
+        list = list.filter(ev => String(ev.personId) === String(personId));
+
+        // Возвращаем как есть, с сохранением total/page из Hikvision (total для всех, front может считать сам)
+        return res.json({
+            success: true,
+            data: {
+                total: list.length,
+                pageNo: parseInt(pageNo),
+                pageSize: parseInt(pageSize),
+                list
+            }
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, error: 'Ошибка получения истории человека', message: error.message });
     }
 });
 
